@@ -183,10 +183,22 @@ def xuat_excel(output_path: str, session_id: str,
 # ─── Flow chinh ───────────────────────────────────────────────────
 
 def main():
+    from datetime import timedelta
     parser = argparse.ArgumentParser(description='Doi chieu ACH GL02 vs MIS')
     parser.add_argument('--input',  default=config.INPUT_DIR,  help='Thu muc chua file input')
     parser.add_argument('--output', default=config.OUTPUT_DIR, help='Thu muc ket qua output')
+    parser.add_argument('--date',   default=None, help='Ngay doi chieu dd/mm/yyyy (mac dinh: lay tu config.py)')
     args = parser.parse_args()
+
+    # Neu truyen --date thi ghi de config runtime (khong sua file config.py)
+    if args.date:
+        from datetime import datetime
+        ngay_dt = datetime.strptime(args.date.strip(), '%d/%m/%Y')
+        config.NGAY_DOI_CHIEU = args.date.strip()
+        config.NGAY_DT        = ngay_dt
+        config.NGAY_TRUOC_DT  = ngay_dt - timedelta(days=1)
+        config.TPAY_TU        = config.NGAY_TRUOC_DT.replace(hour=23, minute=0, second=0)
+        config.TPAY_DEN       = ngay_dt.replace(hour=23, minute=0, second=0)
 
     input_dir  = args.input
     output_dir = args.output
