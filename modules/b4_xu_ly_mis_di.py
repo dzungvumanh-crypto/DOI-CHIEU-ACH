@@ -1,0 +1,151 @@
+import io
+from typing import Dict, List
+import pyzipper
+import pandas as pd
+from config import ZIP_PASSWORD, TPAY_TU, TPAY_DEN
+
+_TRANG_THAI_LOAI_TRU = {'CALD', 'ERPO', 'TPER'}
+
+_COLS = [
+    'NGAY_GIAO_DICH', 'CHI_NHANH', 'REFHUB', 'MSGREF', 'MSGSEQ', 'TXID',
+    'KENH_THANH_TOAN', 'TRANG_THAI_LENH', 'SO_TIEN', 'TRACE',
+    'SE_TRACE', 'SESSION', 'LOAI_LENH_OSB', 'NH_NHAN',
+    'MA_GIAO_DICH', 'NOI_DUNG', 'NGAY_KENH_TRA',
+]
+
+
+def _doc_zip(zip_path: str) -> pd.DataFrame:
+    frames = []
+    with pyzipper.AESZipFile(zip_path, 'r') as z:
+        z.setpassword(ZIP_PASSWORD)
+        for name in z.namelist():
+            if name.lower().endswith('.csv'):
+                raw = z.read(name)
+                for enc in ('utf-8-sig', 'cp1252'):
+                    try:
+                        df = pd.read_csv(
+                            io.BytesIO(raw),
+                            dtype=str,
+                            usecols=lambda c: c in _COLS,
+                            encoding=enc,
+                            low_memory=False,
+                        )
+                        frames.append(df)
+                        break
+                    except UnicodeDecodeError:
+                        continue
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=_COLS)
+
+
+def _tao_so_trace(df: pd.DataFrame) -> pd.Series:
+    """SE_TRACE neu co gia tri, nguoc lai dung TRACE. Bo dau nháy don va leading zero."""
+    se = df['SE_TRACE'].astype(str).str.strip().str.lstrip("'").str.lstrip('0')
+    tr = df['TRACE'].astype(str).str.strip().str.lstrip("'").str.lstrip('0')
+    has_se = ~(se.isin(['', 'nan', 'None', 'NaN']))
+    return se.where(has_se, tr)
+
+
+def _get_timeout_indices(df_tpay: pd.DataFrame, df_scnl: pd.DataFrame,
+                         dict_gw_count: Dict[str, int]) -> pd.Index:
+    """
+    Tra ve Index cua cac dong TPAY thua so voi GW.
+    GW slot da duoc SCNL dung can phai tru ra truoc khi tinh TPAY thua.
+    KHONG dung ignore_index de tranh mat index goc.
+    """
+    # Dem SCNL theo key = CHI_NHANH + SO_TIEN (cung key voi CN tien Hub)
+    scnl_keys = (
+        df_scnl['CHI_NHANH'].astype(str).str.strip()
+        + df_scnl['SO_TIEN'].astype(str)
+    )
+    count_scnl = scnl_keys.value_counts().to_dict()
+
+    idx_list = []
+    for key, group in df_tpay.groupby('CN tiền Hub', sort=False):
+        count_mis  = len(group)
+        count_gw   = dict_gw_count.get(str(key), 0)
+        count_scnl_k = count_scnl.get(str(key), 0)
+        available_gw = max(0, count_gw - count_scnl_k)  # GW con lai danh cho TPAY
+        thua = count_mis - available_gw
+        if thua > 0:
+            idx_list.append(group.tail(thua).index)
+    if idx_list:
+        return idx_list[0].append(idx_list[1:]) if len(idx_list) > 1 else idx_list[0]
+    return pd.Index([])
+
+
+def xu_ly_mis_di(zip_paths: List[str], dict_gw_count: Dict[str, int], session_id: str):
+    """
+    Doc 2 zip MIS_DI, xu ly va tra ve (df_mis_di_final, df_timeout_khong_kenh).
+    """
+    frames = [_doc_zip(p) for p in zip_paths]
+    df = pd.concat(frames, ignore_index=True)
+
+    # Bo trang thai loai tru
+    df = df[~df['TRANG_THAI_LENH'].isin(_TRANG_THAI_LOAI_TRU)].copy()
+
+    # Parse SO_TIEN
+    df['SO_TIEN'] = pd.to_numeric(df['SO_TIEN'], errors='coerce').fillna(0).astype('int64')
+
+    # Tao SO_TRACE
+    df['SO_TRACE'] = _tao_so_trace(df)
+
+    # Parse NGAY_KENH_TRA
+    df['NGAY_KENH_TRA'] = pd.to_datetime(
+        df['NGAY_KENH_TRA'].str.strip(), format='%d/%m/%Y %H:%M:%S', errors='coerce'
+    )
+
+    # Chuan hoa SESSION
+    df['SESSION'] = df['SESSION'].astype(str).str.strip().str.lstrip("'")
+    df['SESSION_NULL'] = df['SESSION'].isin(['', 'nan', 'None', 'NaN'])
+
+    sid = str(session_id)
+
+    # SCNL: SESSION = session_id
+    mask_scnl = df['TRANG_THAI_LENH'] == 'SCNL'
+    df_scnl = df[mask_scnl & (df['SESSION'] == sid)].copy()
+
+    # TXRT: lay toan bo (khong loc session)
+    df_txrt = df[df['TRANG_THAI_LENH'] == 'TXRT'].copy()
+
+    # TPAY: SESSION = session_id HOAC (SESSION null VA NGAY_KENH_TRA trong khoang)
+    mask_tpay = df['TRANG_THAI_LENH'] == 'TPAY'
+    mask_session_ok = df['SESSION'] == sid
+    mask_null_ok = (
+        df['SESSION_NULL']
+        & df['NGAY_KENH_TRA'].notna()
+        & (df['NGAY_KENH_TRA'] >= TPAY_TU)
+        & (df['NGAY_KENH_TRA'] < TPAY_DEN)
+    )
+    df_tpay = df[mask_tpay & (mask_session_ok | mask_null_ok)].copy()
+
+    # Gop lai — giu index goc de sau nay co the loc bang index
+    df_mis_di = pd.concat([df_scnl, df_txrt, df_tpay])
+
+    # Tao KEY_HUB (dung de doi chieu voi NPO trong B5)
+    df_mis_di['KEY_HUB'] = (
+        df_mis_di['CHI_NHANH'].astype(str).str.strip()
+        + df_mis_di['SO_TRACE']
+        + df_mis_di['SO_TIEN'].astype(str)
+    )
+
+    # Them cot "CN tien Hub" = CHI_NHANH + SO_TIEN (ket qua thu cong yeu cau)
+    # Dat ngay sau CHI_NHANH
+    cn_tien = df_mis_di['CHI_NHANH'].astype(str).str.strip() + df_mis_di['SO_TIEN'].astype(str)
+    loc = df_mis_di.columns.get_loc('CHI_NHANH') + 1
+    df_mis_di.insert(loc, 'CN tiền Hub', cn_tien)
+
+    # Tinh timeout: so TPAY voi GW theo KEY = CHI_NHANH + SO_TIEN,
+    # tru di phan GW da duoc SCNL su dung
+    df_scnl_in_mis = df_mis_di[df_mis_di['TRANG_THAI_LENH'] == 'SCNL']
+    df_tpay_in_mis = df_mis_di[df_mis_di['TRANG_THAI_LENH'] == 'TPAY']
+    timeout_idx = _get_timeout_indices(df_tpay_in_mis, df_scnl_in_mis, dict_gw_count)
+
+    df_timeout      = df_mis_di.loc[timeout_idx].copy()
+    df_mis_di_final = df_mis_di[~df_mis_di.index.isin(timeout_idx)].copy()
+
+    print(
+        f'[B4] MIS_DI → tong truoc timeout: {len(df_mis_di):,} | '
+        f'SCNL: {len(df_scnl):,} | TXRT: {len(df_txrt):,} | TPAY: {len(df_tpay):,} | '
+        f'Timeout khong kenh: {len(df_timeout):,} | Final: {len(df_mis_di_final):,}'
+    )
+    return df_mis_di_final.reset_index(drop=True), df_timeout.reset_index(drop=True)

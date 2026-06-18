@@ -1,0 +1,33 @@
+# Du lieu dau vao va ket qua xuat ra (du lieu ngan hang, khong push len GitHub)
+file du liẹu/
+file ket qua/
+input/
+output/
+DOI CHIEU ACH/
+
+# File debug tam thoi
+debug_ach.py
+read_manual.py
+read_program.py
+mis_sotrace.pkl
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+.env
+.venv
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.suo
+*.user
