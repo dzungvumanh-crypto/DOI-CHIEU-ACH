@@ -1,5 +1,6 @@
 import io
 from typing import Dict, List
+import numpy as np
 import pyzipper
 import pandas as pd
 from config import ZIP_PASSWORD, TPAY_TU, TPAY_DEN
@@ -68,9 +69,9 @@ def _get_timeout_indices(df_tpay: pd.DataFrame, df_scnl: pd.DataFrame,
         thua = count_mis - available_gw
         if thua > 0:
             idx_list.append(group.tail(thua).index)
-    if idx_list:
-        return idx_list[0].append(idx_list[1:]) if len(idx_list) > 1 else idx_list[0]
-    return pd.Index([])
+    if not idx_list:
+        return pd.Index([], dtype='int64')
+    return pd.Index(np.concatenate([i.to_numpy() for i in idx_list]))
 
 
 def xu_ly_mis_di(zip_paths: List[str], dict_gw_count: Dict[str, int], session_id: str):

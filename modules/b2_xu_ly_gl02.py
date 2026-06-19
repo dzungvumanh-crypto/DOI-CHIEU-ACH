@@ -4,7 +4,7 @@ import pyzipper
 import pandas as pd
 from config import ZIP_PASSWORD
 
-_COLS = ['TRBRCD', 'REFERENCE', 'DRAMOUNT', 'CRAMOUNT']
+_COLS_REQUIRED = ['TRBRCD', 'REFERENCE', 'DRAMOUNT', 'CRAMOUNT']
 
 _RE_TRACE = re.compile(r'[A-Za-z]+(\d+)$')
 
@@ -27,15 +27,17 @@ def _doc_zip(zip_path: str) -> pd.DataFrame:
                         df = pd.read_csv(
                             io.BytesIO(raw),
                             dtype=str,
-                            usecols=_COLS,
                             encoding=enc,
                             low_memory=False,
                         )
+                        missing = [c for c in _COLS_REQUIRED if c not in df.columns]
+                        if missing:
+                            raise ValueError(f'Thieu cot: {missing}')
                         frames.append(df)
                         break
                     except UnicodeDecodeError:
                         continue
-    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=_COLS)
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
 
 def xu_ly_gl02(zip_path: str):

@@ -25,6 +25,8 @@ from modules.b5_doi_chieu_di  import doi_chieu_di
 from modules.b6_xu_ly_mis_den import xu_ly_mis_den
 from modules.b7_doi_chieu_den import doi_chieu_den
 
+from concurrent.futures import ThreadPoolExecutor
+
 import pandas as pd
 import xlsxwriter
 
@@ -58,6 +60,12 @@ def _clean(df: pd.DataFrame, cols: list) -> pd.DataFrame:
     return df[existing].copy()
 
 
+def _tong_tien(df: pd.DataFrame, col: str) -> int:
+    if df is None or len(df) == 0 or col not in df.columns:
+        return 0
+    return int(pd.to_numeric(df[col], errors='coerce').fillna(0).sum())
+
+
 # ─── Mau sac ──────────────────────────────────────────────────────
 _XANH_LA  = '#C6EFCE'
 _DO       = '#FFC7CE'
@@ -76,38 +84,58 @@ def _viet_sheet(workbook, worksheet, df: pd.DataFrame, header_color: str):
     for col_idx, col_name in enumerate(df.columns):
         worksheet.write(0, col_idx, str(col_name), fmt_header)
 
-    for row_idx, row in enumerate(df.itertuples(index=False), start=1):
-        for col_idx, val in enumerate(row):
-            if val is None or (not isinstance(val, str) and pd.isna(val)):
-                worksheet.write(row_idx, col_idx, '', fmt_cell)
-            else:
-                worksheet.write(row_idx, col_idx, val, fmt_cell)
+    rows = df.fillna('').values.tolist()
+    for row_idx, row in enumerate(rows, start=1):
+        worksheet.write_row(row_idx, 0, row, fmt_cell)
 
 
 def _viet_tong_ket(workbook, ws, session_id,
-                   n_di_khop, n_npo_di_thua, n_mis_di_thua, n_timeout,
-                   n_den_khop, n_npo_den_thua, n_mis_den_thua):
-    fmt_label = workbook.add_format({'bold': True, 'font_size': 10})
-    fmt_val   = workbook.add_format({'font_size': 10})
+                   n_di_khop,      s_di_khop,
+                   n_npo_di_thua,  s_npo_di_thua,
+                   n_mis_di_thua,  s_mis_di_thua,
+                   n_timeout,      s_timeout,
+                   n_den_khop,     s_den_khop,
+                   n_npo_den_thua, s_npo_den_thua,
+                   n_mis_den_thua, s_mis_den_thua):
+    fmt_label  = workbook.add_format({'bold': True, 'font_size': 10})
+    fmt_header = workbook.add_format({'bold': True, 'font_size': 10,
+                                      'bg_color': '#DDEBF7', 'border': 1})
+    fmt_num    = workbook.add_format({'font_size': 10, 'num_format': '#,##0'})
+    fmt_val    = workbook.add_format({'font_size': 10})
+
+    ws.write(0, 0, 'Chi tieu',           fmt_header)
+    ws.write(0, 1, 'So giao dich',       fmt_header)
+    ws.write(0, 2, 'Tong so tien (VND)', fmt_header)
+    ws.set_column(0, 0, 30)
+    ws.set_column(1, 1, 16)
+    ws.set_column(2, 2, 22)
 
     data = [
-        ('Ngay doi chieu',           config.NGAY_DOI_CHIEU),
-        ('Session',                  session_id),
-        ('', ''),
-        ('=== CHIEU DI ===',         ''),
-        ('So giao dich khop (MIS)',  n_di_khop),
-        ('NPO_DI thua',              n_npo_di_thua),
-        ('MIS_DI thua',              n_mis_di_thua),
-        ('Timeout khong kenh',       n_timeout),
-        ('', ''),
-        ('=== CHIEU DEN ===',        ''),
-        ('So giao dich khop (MIS)',  n_den_khop),
-        ('NPO_DEN thua',             n_npo_den_thua),
-        ('MIS_DEN thua',             n_mis_den_thua),
+        ('Ngay doi chieu',           config.NGAY_DOI_CHIEU, ''),
+        ('Session',                  session_id,             ''),
+        ('',                         '',                     ''),
+        ('=== CHIEU DI ===',         '',                     ''),
+        ('So giao dich khop (MIS)',  n_di_khop,     s_di_khop),
+        ('NPO_DI thua',              n_npo_di_thua, s_npo_di_thua),
+        ('MIS_DI thua',              n_mis_di_thua, s_mis_di_thua),
+        ('Timeout khong kenh',       n_timeout,     s_timeout),
+        ('',                         '',             ''),
+        ('=== CHIEU DEN ===',        '',             ''),
+        ('So giao dich khop (MIS)',  n_den_khop,    s_den_khop),
+        ('NPO_DEN thua',             n_npo_den_thua, s_npo_den_thua),
+        ('MIS_DEN thua',             n_mis_den_thua, s_mis_den_thua),
     ]
-    for row_idx, (label, val) in enumerate(data):
-        ws.write(row_idx, 0, label, fmt_label)
-        ws.write(row_idx, 1, val,   fmt_val)
+
+    for row_idx, (label, val, tien) in enumerate(data, start=1):
+        ws.write_string(row_idx, 0, label, fmt_label)
+        if isinstance(val, int):
+            ws.write(row_idx, 1, val, fmt_num)
+        else:
+            ws.write(row_idx, 1, val, fmt_val)
+        if isinstance(tien, int) and tien > 0:
+            ws.write(row_idx, 2, tien, fmt_num)
+        elif tien != '':
+            ws.write(row_idx, 2, tien, fmt_val)
 
 
 # ─── Tim file ─────────────────────────────────────────────────────
@@ -166,12 +194,19 @@ def xuat_excel(output_path: str, session_id: str,
             _viet_tong_ket(
                 workbook, ws, session_id,
                 len(df_mis_di_khop)  if df_mis_di_khop  is not None else 0,
+                _tong_tien(df_mis_di_khop,   'SO_TIEN'),
                 len(df_npo_di_thua)  if df_npo_di_thua  is not None else 0,
+                _tong_tien(df_npo_di_thua,   'CRAMOUNT'),
                 len(df_mis_di_thua)  if df_mis_di_thua  is not None else 0,
+                _tong_tien(df_mis_di_thua,   'SO_TIEN'),
                 len(df_timeout)      if df_timeout      is not None else 0,
+                _tong_tien(df_timeout,       'SO_TIEN'),
                 len(df_mis_den_khop) if df_mis_den_khop is not None else 0,
+                _tong_tien(df_mis_den_khop,  'SO_TIEN'),
                 len(df_npo_den_thua) if df_npo_den_thua is not None else 0,
+                _tong_tien(df_npo_den_thua,  'DRAMOUNT'),
                 len(df_mis_den_thua) if df_mis_den_thua is not None else 0,
+                _tong_tien(df_mis_den_thua,  'SO_TIEN'),
             )
         else:
             _viet_sheet(workbook, ws, df, color)
@@ -211,33 +246,39 @@ def main():
     # B1
     session_id = doc_session(input_dir)
 
-    # B2
-    gl02_files = _tim_file(input_dir, 'GL02*.zip')
+    # Tim file (nhanh, tuan tu)
+    gl02_files    = _tim_file(input_dir, 'GL02*.zip')
+    gw_path       = _tim_gw_xlsx(input_dir)
+    mis_di_files  = _tim_file(input_dir, '*_DI_*.zip')
+    mis_den_files = _tim_file(input_dir, '*_DEN_*.zip')
+
     if not gl02_files:
         raise FileNotFoundError('Khong tim thay GL02*.zip')
-    npo_di, npo_den = xu_ly_gl02(gl02_files[0])
-
-    # B3
-    gw_path = _tim_gw_xlsx(input_dir)
-    dict_gw_count, df_gw_raw = xu_ly_gw(gw_path, session_id)
-
-    # B4
-    mis_di_files = _tim_file(input_dir, '*_DI_*.zip')
     if len(mis_di_files) < 2:
         raise FileNotFoundError(f'Can 2 file MIS_DI zip, chi tim thay {len(mis_di_files)}: {mis_di_files}')
-    mis_di_final, df_timeout = xu_ly_mis_di(mis_di_files, dict_gw_count, session_id)
-
-    # B5
-    df_mis_di_khop, df_npo_di_thua, df_mis_di_thua = doi_chieu_di(npo_di, mis_di_final)
-
-    # B6
-    mis_den_files = _tim_file(input_dir, '*_DEN_*.zip')
     if len(mis_den_files) < 2:
         raise FileNotFoundError(f'Can 2 file MIS_DEN zip, chi tim thay {len(mis_den_files)}: {mis_den_files}')
-    df_mis_den = xu_ly_mis_den(mis_den_files, session_id, config.NGAY_DT)
 
-    # B7
-    df_mis_den_khop, df_npo_den_thua, df_mis_den_thua = doi_chieu_den(npo_den, df_mis_den)
+    # Phase 1: B2 + B3 + B6 song song (doc lap nhau)
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        f_gl02    = ex.submit(xu_ly_gl02,    gl02_files[0])
+        f_gw      = ex.submit(xu_ly_gw,      gw_path, session_id)
+        f_mis_den = ex.submit(xu_ly_mis_den, mis_den_files, session_id, config.NGAY_DT)
+
+        npo_di, npo_den          = f_gl02.result()
+        dict_gw_count, df_gw_raw = f_gw.result()
+        df_mis_den               = f_mis_den.result()
+
+    # B4: can dict_gw_count tu B3 (tuan tu)
+    mis_di_final, df_timeout = xu_ly_mis_di(mis_di_files, dict_gw_count, session_id)
+
+    # Phase 2: B5 + B7 song song
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        f_di  = ex.submit(doi_chieu_di,  npo_di,  mis_di_final)
+        f_den = ex.submit(doi_chieu_den, npo_den, df_mis_den)
+
+        df_mis_di_khop, df_npo_di_thua, df_mis_di_thua    = f_di.result()
+        df_mis_den_khop, df_npo_den_thua, df_mis_den_thua = f_den.result()
 
     # Xuat Excel
     ngay_str    = config.NGAY_DT.strftime('%Y%m%d')
