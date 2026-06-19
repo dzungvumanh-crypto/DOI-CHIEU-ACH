@@ -7,6 +7,7 @@ echo  DOI CHIEU ACH - GL02 vs MIS Hub
 echo ============================================================
 echo.
 
+REM Chuyen ve thu muc chua START.bat (dung absolute path noi bo)
 cd /d "%~dp0"
 
 REM ============================================================
@@ -43,8 +44,8 @@ echo [OK] Thu vien san sang.
 
 REM ============================================================
 REM BUOC 3: XAC DINH THU MUC DU LIEU
-REM   - Keo tha FOLDER vao START.bat  -> dung folder do
-REM   - Chay truc tiep                -> dung thu muc "input"
+REM   - Keo tha FOLDER vao START.bat  -> %1 = duong dan folder do
+REM   - Chay truc tiep double-click   -> dung thu muc "input"
 REM ============================================================
 echo.
 set "INPUT_DIR="
@@ -58,7 +59,7 @@ if not "%~1"=="" (
 )
 
 if exist "input\" (
-    set "INPUT_DIR=%~dp0input"
+    set "INPUT_DIR=input"
     echo [OK] Dung thu muc mac dinh: input\
     goto :ASK_DATE
 )
@@ -71,12 +72,12 @@ echo  Cach 1 - Keo tha:
 echo    Keo FOLDER du lieu tha thang vao file START.bat
 echo.
 echo  Cach 2 - Thu muc mac dinh:
-echo    Dat tat ca file vao thu muc: %~dp0input\
+echo    Dat tat ca file vao thu muc:  input\
 echo.
 echo  File can co trong folder:
-echo    PDF   : ACH_*_NRT_*_*.pdf
-echo    GW    : *.xlsx  (co sheet GW)
-echo    GL02  : GL02*.zip
+echo    PDF    : ACH_*_NRT_*_*.pdf
+echo    GW     : *.xlsx  (co sheet GW)
+echo    GL02   : GL02*.zip
 echo    MIS DI : *_DI_*.zip  (file T va T-1)
 echo    MIS DEN: *_DEN_*.zip (file T va T-1)
 echo.
@@ -95,12 +96,14 @@ echo [OK] Ngay: %NGAY_DC%
 
 REM ============================================================
 REM BUOC 5: CHAY DOI CHIEU
+REM   Dung relative path (input, output) vi da cd vao thu muc goc
+REM   Tranh truyen path Unicode qua command line
 REM ============================================================
 echo.
 echo [INFO] Bat dau xu ly...
 echo.
 
-python main.py --input "%INPUT_DIR%" --output "%~dp0output" --date "%NGAY_DC%"
+python main.py --input "%INPUT_DIR%" --output "output" --date "%NGAY_DC%"
 
 echo.
 if errorlevel 1 (
@@ -109,9 +112,9 @@ if errorlevel 1 (
     echo ============================================================
 ) else (
     echo ============================================================
-    echo  [THANH CONG] Ket qua: %~dp0output\
+    echo  [THANH CONG] Ket qua da xuat vao: output\
     echo ============================================================
-    start "" "%~dp0output"
+    start "" "output"
 )
 
 pause
