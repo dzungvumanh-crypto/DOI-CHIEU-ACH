@@ -1,4 +1,5 @@
 import io
+from concurrent.futures import ThreadPoolExecutor
 from typing import List
 from datetime import datetime
 import pyzipper
@@ -37,9 +38,12 @@ def _doc_zip(zip_path: str) -> pd.DataFrame:
 
 def xu_ly_mis_den(zip_paths: List[str], session_id: str, ngay_doi_chieu: datetime):
     """
-    Doc 2 zip MIS_DEN, tra ve df_mis_den da xu ly.
+    Doc 2 zip MIS_DEN song song, tra ve df_mis_den da xu ly.
     """
-    frames = [_doc_zip(p) for p in zip_paths]
+    # A1: doc 2 ZIP song song thay vi tuan tu
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        futures = [ex.submit(_doc_zip, p) for p in zip_paths]
+        frames  = [f.result() for f in futures]
     df = pd.concat(frames, ignore_index=True)
 
     # Parse NGAY_GIAO_DICH
@@ -54,13 +58,13 @@ def xu_ly_mis_den(zip_paths: List[str], session_id: str, ngay_doi_chieu: datetim
     sid = str(session_id)
     ngay_ts = pd.Timestamp(ngay_doi_chieu.date())
 
-    # Loc SESSION: giu session_id HOAC (null va ngay_giao_dich = ngay_doi_chieu)
+    # Loc SESSION
     mask_ok = (df['SESSION'] == sid) | (
         df['SESSION_NULL'] & (df['NGAY_GIAO_DICH'] == ngay_ts)
     )
     df = df[mask_ok].copy()
 
-    # Chuyen lai thanh string de xuat Excel dung format (tranh serial number)
+    # Chuyen lai thanh string de xuat Excel dung format
     df['NGAY_GIAO_DICH'] = df['NGAY_GIAO_DICH'].dt.strftime('%d/%m/%Y').fillna('')
 
     # Bo TRANG_THAI_LENH = 'RJCT'
@@ -69,11 +73,10 @@ def xu_ly_mis_den(zip_paths: List[str], session_id: str, ngay_doi_chieu: datetim
     # Parse SO_TIEN
     df['SO_TIEN'] = pd.to_numeric(df['SO_TIEN'], errors='coerce').fillna(0).astype('int64')
 
-    # TRACE: bo dau nháy don roi bo leading zero (095789780 → 95789780)
-    # de khop voi SO_TRACE trich tu REFERENCE cua GL02 (khong co leading zero)
+    # TRACE: bo dau nháy don roi bo leading zero
     df['TRACE'] = df['TRACE'].astype(str).str.strip().str.lstrip("'").str.lstrip('0')
 
-    # KEY_DEN_HUB = TRACE + SO_TIEN (khong co CHI_NHANH vi NPO_DEN dung TRBRCD=5227 clearing)
+    # KEY_DEN_HUB
     df['KEY_DEN_HUB'] = df['TRACE'] + df['SO_TIEN'].astype(str)
 
     print(f'[B6] MIS_DEN | {len(df):,} dong sau loc')

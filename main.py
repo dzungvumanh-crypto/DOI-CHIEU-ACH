@@ -29,6 +29,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pandas as pd
 import xlsxwriter
+from tqdm import tqdm
 
 
 # ─── Cot can giu cho tung loai DataFrame ──────────────────────────
@@ -51,12 +52,18 @@ _COLS_MIS_DEN = [
     'SESSION', 'LOAI_LENH_OSB', 'NH_GUI', 'NOI_DUNG',
 ]
 
+# Nguong dong: sheet lon hon se xuat ra CSV thay vi ghi vao Excel
+CSV_THRESHOLD = 50_000
 
-def _clean(df: pd.DataFrame, cols: list) -> pd.DataFrame:
-    """Chi giu cac cot co trong df va thuoc danh sach cols."""
+
+def _clean(df: pd.DataFrame, cols: list, label: str = '') -> pd.DataFrame:
+    """Chi giu cac cot co trong df va thuoc danh sach cols. Log warning neu thieu cot."""
     if df is None or len(df) == 0:
         return df
     existing = [c for c in cols if c in df.columns]
+    missing  = [c for c in cols if c not in df.columns]
+    if missing:
+        print(f'[WARN] _clean({label}): thieu cot {missing}')
     return df[existing].copy()
 
 
@@ -163,31 +170,46 @@ def _tim_gw_xlsx(input_dir: str) -> str:
     raise FileNotFoundError('Khong tim thay file GW .xlsx trong: ' + abs_dir)
 
 
-# ─── Xuat Excel ───────────────────────────────────────────────────
+# ─── Xuat Excel / CSV ─────────────────────────────────────────────
 
 def xuat_excel(output_path: str, session_id: str,
                df_mis_di_khop, df_npo_di_thua, df_mis_di_thua,
                df_timeout, df_mis_den_khop, df_npo_den_thua,
                df_mis_den_thua, df_gw_raw):
 
-    # Lam sach cot truoc khi ghi
+    output_dir  = os.path.dirname(os.path.abspath(output_path))
+    ngay_str    = os.path.basename(output_path).replace('doi_chieu_', '').replace('.xlsx', '')
     df_gw_clean = df_gw_raw.drop(columns=['KEY_GW'], errors='ignore') if df_gw_raw is not None else None
 
     sheets = [
-        ('TONG_KET',           None,                                   '#FFFFFF'),
-        ('MIS_DI_KHOP',        _clean(df_mis_di_khop,  _COLS_MIS_DI), _XANH_LA),
-        ('NPO_DI_THUA',        _clean(df_npo_di_thua,  _COLS_NPO),    _DO),
-        ('MIS_DI_THUA',        _clean(df_mis_di_thua,  _COLS_MIS_DI), _DO),
-        ('TIMEOUT_KHONG_KENH', _clean(df_timeout,       _COLS_MIS_DI), _CAM),
-        ('MIS_DEN_KHOP',       _clean(df_mis_den_khop, _COLS_MIS_DEN), _XANH_LA),
-        ('NPO_DEN_THUA',       _clean(df_npo_den_thua, _COLS_NPO),    _DO),
-        ('MIS_DEN_THUA',       _clean(df_mis_den_thua, _COLS_MIS_DEN), _DO),
-        ('RAW_GW',             df_gw_clean,                            _XANH_LAM),
+        ('TONG_KET',           None,                                                     '#FFFFFF'),
+        ('MIS_DI_KHOP',        _clean(df_mis_di_khop,  _COLS_MIS_DI, 'MIS_DI_KHOP'),   _XANH_LA),
+        ('NPO_DI_THUA',        _clean(df_npo_di_thua,  _COLS_NPO,    'NPO_DI_THUA'),   _DO),
+        ('MIS_DI_THUA',        _clean(df_mis_di_thua,  _COLS_MIS_DI, 'MIS_DI_THUA'),   _DO),
+        ('TIMEOUT_KHONG_KENH', _clean(df_timeout,       _COLS_MIS_DI, 'TIMEOUT'),        _CAM),
+        ('MIS_DEN_KHOP',       _clean(df_mis_den_khop, _COLS_MIS_DEN,'MIS_DEN_KHOP'),  _XANH_LA),
+        ('NPO_DEN_THUA',       _clean(df_npo_den_thua, _COLS_NPO,    'NPO_DEN_THUA'),  _DO),
+        ('MIS_DEN_THUA',       _clean(df_mis_den_thua, _COLS_MIS_DEN,'MIS_DEN_THUA'),  _DO),
+        ('RAW_GW',             df_gw_clean,                                              _XANH_LAM),
     ]
 
     workbook = xlsxwriter.Workbook(output_path, {'strings_to_numbers': False, 'constant_memory': True})
+    csv_files_created = []
 
-    for sheet_name, df, color in sheets:
+    for sheet_name, df, color in tqdm(sheets, desc='Ghi Excel', unit='sheet'):
+        # Sheet lon → ghi CSV rieng, de note trong Excel
+        if (df is not None and len(df) > CSV_THRESHOLD
+                and sheet_name in ('MIS_DI_KHOP', 'MIS_DEN_KHOP')):
+            csv_path = os.path.join(output_dir, f'{sheet_name}_{ngay_str}.csv')
+            df.to_csv(csv_path, index=False, encoding='utf-8-sig')
+            csv_files_created.append((sheet_name, csv_path))
+            ws = workbook.add_worksheet(sheet_name)
+            ws.set_tab_color(color)
+            ws.write(0, 0, f'[Du lieu lon - xem file: {os.path.basename(csv_path)}]')
+            ws.write(1, 0, f'Tong so dong: {len(df):,}')
+            print(f'[CSV] {sheet_name}: {len(df):,} dong -> {csv_path}')
+            continue
+
         ws = workbook.add_worksheet(sheet_name)
         ws.set_tab_color(color)
         if sheet_name == 'TONG_KET':
@@ -212,41 +234,47 @@ def xuat_excel(output_path: str, session_id: str,
             _viet_sheet(workbook, ws, df, color)
 
     workbook.close()
-    print(f'\n[DONE] Da xuat: {output_path}')
+    print(f'\n[DONE] Excel: {output_path}')
+    for name, path in csv_files_created:
+        print(f'       CSV  : {path}  ({name})')
 
 
-# ─── Flow chinh ───────────────────────────────────────────────────
+# ─── main_from_dir — dung cho Web UI (thread-safe) ────────────────
 
-def main():
-    from datetime import timedelta
-    parser = argparse.ArgumentParser(description='Doi chieu ACH GL02 vs MIS')
-    parser.add_argument('--input',  default=config.INPUT_DIR,  help='Thu muc chua file input')
-    parser.add_argument('--output', default=config.OUTPUT_DIR, help='Thu muc ket qua output')
-    parser.add_argument('--date',   default=None, help='Ngay doi chieu dd/mm/yyyy (mac dinh: lay tu config.py)')
-    args = parser.parse_args()
+def main_from_dir(input_dir: str, output_dir: str,
+                  ngay: str = None, log_callback=None) -> str:
+    """
+    Phien ban cua main() dung cho Web UI.
+    - input_dir: thu muc da co file upload
+    - output_dir: noi luu file ket qua
+    - ngay: 'dd/mm/yyyy' hoac None (lay tu config)
+    - log_callback: ham(msg: str) de emit log real-time
+    Tra ve: duong dan file output .xlsx
+    Thread-safe: ngay doi chieu tinh local, KHONG sua config module-level.
+    """
+    from datetime import datetime, timedelta
 
-    # Neu truyen --date thi ghi de config runtime (khong sua file config.py)
-    if args.date:
-        from datetime import datetime
-        ngay_dt = datetime.strptime(args.date.strip(), '%d/%m/%Y')
-        config.NGAY_DOI_CHIEU = args.date.strip()
-        config.NGAY_DT        = ngay_dt
-        config.NGAY_TRUOC_DT  = ngay_dt - timedelta(days=1)
-        config.TPAY_TU        = config.NGAY_TRUOC_DT.replace(hour=23, minute=0, second=0)
-        config.TPAY_DEN       = ngay_dt.replace(hour=23, minute=0, second=0)
+    def log(msg):
+        print(msg)
+        if log_callback:
+            log_callback(msg)
 
-    input_dir  = args.input
-    output_dir = args.output
+    # Tinh ngay local thay vi mutate config global
+    if ngay:
+        ngay_dt      = datetime.strptime(ngay.strip(), '%d/%m/%Y')
+        ngay_str_cfg = ngay.strip()
+    else:
+        ngay_dt      = config.NGAY_DT
+        ngay_str_cfg = config.NGAY_DOI_CHIEU
+
+    # Tinh tpay de truyen tuong minh xuong b4 (thread-safe)
+    tpay_tu  = (ngay_dt - timedelta(days=1)).replace(hour=23, minute=0, second=0)
+    tpay_den = ngay_dt.replace(hour=23, minute=0, second=0)
+
     os.makedirs(output_dir, exist_ok=True)
+    log(f'Ngay doi chieu: {ngay_str_cfg}')
 
-    print('=' * 60)
-    print(f'DOI CHIEU ACH  —  Ngay: {config.NGAY_DOI_CHIEU}')
-    print('=' * 60)
-
-    # B1
-    session_id = doc_session(input_dir)
-
-    # Tim file (nhanh, tuan tu)
+    session_id    = doc_session(input_dir)
     gl02_files    = _tim_file(input_dir, 'GL02*.zip')
     gw_path       = _tim_gw_xlsx(input_dir)
     mis_di_files  = _tim_file(input_dir, '*_DI_*.zip')
@@ -255,22 +283,27 @@ def main():
     if not gl02_files:
         raise FileNotFoundError('Khong tim thay GL02*.zip')
     if len(mis_di_files) < 2:
-        raise FileNotFoundError(f'Can 2 file MIS_DI zip, chi tim thay {len(mis_di_files)}: {mis_di_files}')
+        raise FileNotFoundError(f'Can 2 file MIS_DI zip, chi tim thay {len(mis_di_files)}')
     if len(mis_den_files) < 2:
-        raise FileNotFoundError(f'Can 2 file MIS_DEN zip, chi tim thay {len(mis_den_files)}: {mis_den_files}')
+        raise FileNotFoundError(f'Can 2 file MIS_DEN zip, chi tim thay {len(mis_den_files)}')
 
-    # Phase 1: B2 + B3 + B6 song song (doc lap nhau)
+    log(f'Tim thay: GL02={len(gl02_files)}, DI={len(mis_di_files)}, DEN={len(mis_den_files)}')
+
+    # Phase 1: B2 + B3 + B6 song song
     with ThreadPoolExecutor(max_workers=3) as ex:
         f_gl02    = ex.submit(xu_ly_gl02,    gl02_files[0])
         f_gw      = ex.submit(xu_ly_gw,      gw_path, session_id)
-        f_mis_den = ex.submit(xu_ly_mis_den, mis_den_files, session_id, config.NGAY_DT)
+        f_mis_den = ex.submit(xu_ly_mis_den, mis_den_files, session_id, ngay_dt)
 
         npo_di, npo_den          = f_gl02.result()
         dict_gw_count, df_gw_raw = f_gw.result()
         df_mis_den               = f_mis_den.result()
 
-    # B4: can dict_gw_count tu B3 (tuan tu)
-    mis_di_final, df_timeout = xu_ly_mis_di(mis_di_files, dict_gw_count, session_id)
+    # B4: can dict_gw_count tu B3, truyen tpay tuong minh (thread-safe)
+    mis_di_final, df_timeout = xu_ly_mis_di(
+        mis_di_files, dict_gw_count, session_id,
+        tpay_tu=tpay_tu, tpay_den=tpay_den
+    )
 
     # Phase 2: B5 + B7 song song
     with ThreadPoolExecutor(max_workers=2) as ex:
@@ -280,15 +313,35 @@ def main():
         df_mis_di_khop, df_npo_di_thua, df_mis_di_thua    = f_di.result()
         df_mis_den_khop, df_npo_den_thua, df_mis_den_thua = f_den.result()
 
-    # Xuat Excel
-    ngay_str    = config.NGAY_DT.strftime('%Y%m%d')
-    output_path = os.path.join(output_dir, f'doi_chieu_{ngay_str}.xlsx')
+    output_path = os.path.join(output_dir, f'doi_chieu_{ngay_dt.strftime("%Y%m%d")}.xlsx')
     xuat_excel(
         output_path, session_id,
         df_mis_di_khop, df_npo_di_thua, df_mis_di_thua,
         df_timeout,
         df_mis_den_khop, df_npo_den_thua, df_mis_den_thua,
         df_gw_raw,
+    )
+    log(f'Hoan thanh: {output_path}')
+    return output_path
+
+
+# ─── Flow chinh (CLI) ─────────────────────────────────────────────
+
+def main():
+    parser = argparse.ArgumentParser(description='Doi chieu ACH GL02 vs MIS')
+    parser.add_argument('--input',  default=config.INPUT_DIR,  help='Thu muc chua file input')
+    parser.add_argument('--output', default=config.OUTPUT_DIR, help='Thu muc ket qua output')
+    parser.add_argument('--date',   default=None, help='Ngay doi chieu dd/mm/yyyy (mac dinh: lay tu config.py)')
+    args = parser.parse_args()
+
+    print('=' * 60)
+    print(f'DOI CHIEU ACH  —  Ngay: {args.date or config.NGAY_DOI_CHIEU}')
+    print('=' * 60)
+
+    main_from_dir(
+        input_dir=args.input,
+        output_dir=args.output,
+        ngay=args.date,
     )
 
 

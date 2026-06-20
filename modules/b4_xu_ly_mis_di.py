@@ -1,9 +1,11 @@
 import io
+from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List
+from datetime import datetime
 import numpy as np
 import pyzipper
 import pandas as pd
-from config import ZIP_PASSWORD, TPAY_TU, TPAY_DEN
+from config import ZIP_PASSWORD
 
 _TRANG_THAI_LOAI_TRU = {'CALD', 'ERPO', 'TPER'}
 
@@ -53,7 +55,6 @@ def _get_timeout_indices(df_tpay: pd.DataFrame, df_scnl: pd.DataFrame,
     GW slot da duoc SCNL dung can phai tru ra truoc khi tinh TPAY thua.
     KHONG dung ignore_index de tranh mat index goc.
     """
-    # Dem SCNL theo key = CHI_NHANH + SO_TIEN (cung key voi CN tien Hub)
     scnl_keys = (
         df_scnl['CHI_NHANH'].astype(str).str.strip()
         + df_scnl['SO_TIEN'].astype(str)
@@ -62,10 +63,10 @@ def _get_timeout_indices(df_tpay: pd.DataFrame, df_scnl: pd.DataFrame,
 
     idx_list = []
     for key, group in df_tpay.groupby('CN tiền Hub', sort=False):
-        count_mis  = len(group)
-        count_gw   = dict_gw_count.get(str(key), 0)
+        count_mis    = len(group)
+        count_gw     = dict_gw_count.get(str(key), 0)
         count_scnl_k = count_scnl.get(str(key), 0)
-        available_gw = max(0, count_gw - count_scnl_k)  # GW con lai danh cho TPAY
+        available_gw = max(0, count_gw - count_scnl_k)
         thua = count_mis - available_gw
         if thua > 0:
             idx_list.append(group.tail(thua).index)
@@ -74,11 +75,21 @@ def _get_timeout_indices(df_tpay: pd.DataFrame, df_scnl: pd.DataFrame,
     return pd.Index(np.concatenate([i.to_numpy() for i in idx_list]))
 
 
-def xu_ly_mis_di(zip_paths: List[str], dict_gw_count: Dict[str, int], session_id: str):
+def xu_ly_mis_di(zip_paths: List[str], dict_gw_count: Dict[str, int], session_id: str,
+                 tpay_tu: datetime = None, tpay_den: datetime = None):
     """
-    Doc 2 zip MIS_DI, xu ly va tra ve (df_mis_di_final, df_timeout_khong_kenh).
+    Doc 2 zip MIS_DI song song, xu ly va tra ve (df_mis_di_final, df_timeout_khong_kenh).
+    tpay_tu / tpay_den: neu truyen thi dung gia tri nay (thread-safe cho Web UI);
+                        neu None thi lay tu config (CLI mode).
     """
-    frames = [_doc_zip(p) for p in zip_paths]
+    import config
+    _tpay_tu  = tpay_tu  if tpay_tu  is not None else config.TPAY_TU
+    _tpay_den = tpay_den if tpay_den is not None else config.TPAY_DEN
+
+    # A1: doc 2 ZIP song song thay vi tuan tu
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        futures = [ex.submit(_doc_zip, p) for p in zip_paths]
+        frames  = [f.result() for f in futures]
     df = pd.concat(frames, ignore_index=True)
 
     # Bo trang thai loai tru
@@ -114,29 +125,27 @@ def xu_ly_mis_di(zip_paths: List[str], dict_gw_count: Dict[str, int], session_id
     mask_null_ok = (
         df['SESSION_NULL']
         & df['NGAY_KENH_TRA'].notna()
-        & (df['NGAY_KENH_TRA'] >= TPAY_TU)
-        & (df['NGAY_KENH_TRA'] < TPAY_DEN)
+        & (df['NGAY_KENH_TRA'] >= _tpay_tu)
+        & (df['NGAY_KENH_TRA'] < _tpay_den)
     )
     df_tpay = df[mask_tpay & (mask_session_ok | mask_null_ok)].copy()
 
-    # Gop lai — giu index goc de sau nay co the loc bang index
+    # Gop lai — giu index goc
     df_mis_di = pd.concat([df_scnl, df_txrt, df_tpay])
 
-    # Tao KEY_HUB (dung de doi chieu voi NPO trong B5)
+    # Tao KEY_HUB
     df_mis_di['KEY_HUB'] = (
         df_mis_di['CHI_NHANH'].astype(str).str.strip()
         + df_mis_di['SO_TRACE']
         + df_mis_di['SO_TIEN'].astype(str)
     )
 
-    # Them cot "CN tien Hub" = CHI_NHANH + SO_TIEN (ket qua thu cong yeu cau)
-    # Dat ngay sau CHI_NHANH
+    # Them cot "CN tien Hub"
     cn_tien = df_mis_di['CHI_NHANH'].astype(str).str.strip() + df_mis_di['SO_TIEN'].astype(str)
     loc = df_mis_di.columns.get_loc('CHI_NHANH') + 1
     df_mis_di.insert(loc, 'CN tiền Hub', cn_tien)
 
-    # Tinh timeout: so TPAY voi GW theo KEY = CHI_NHANH + SO_TIEN,
-    # tru di phan GW da duoc SCNL su dung
+    # Tinh timeout
     df_scnl_in_mis = df_mis_di[df_mis_di['TRANG_THAI_LENH'] == 'SCNL']
     df_tpay_in_mis = df_mis_di[df_mis_di['TRANG_THAI_LENH'] == 'TPAY']
     timeout_idx = _get_timeout_indices(df_tpay_in_mis, df_scnl_in_mis, dict_gw_count)
