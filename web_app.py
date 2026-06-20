@@ -109,4 +109,4 @@ if __name__ == '__main__':
     print(f'  Web UI chay tai: http://{ip}:8080')
     print(f'  Tu may khac trong LAN, truy cap dia chi tren.')
     print('=' * 50 + '\n')
-    socketio.run(app, host='0.0.0.0', port=8080, debug=False)
+    socketio.run(app, host='0.0.0.0', port=8080, debug=False, allow_unsafe_werkzeug=True)
