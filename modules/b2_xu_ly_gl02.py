@@ -27,10 +27,12 @@ def _doc_zip(zip_path: str) -> pd.DataFrame:
                         df = pd.read_csv(
                             io.BytesIO(raw),
                             dtype=str,
-                            usecols=lambda c: c in _COLS_NPO,
+                            usecols=lambda c: c.strip() in _COLS_NPO,
                             encoding=enc,
                             low_memory=False,
                         )
+                        # Xoa khoang trang thua trong ten cot (vi du: 'CRTDTM ')
+                        df.columns = [c.strip() for c in df.columns]
                         missing = [c for c in _COLS_REQUIRED if c not in df.columns]
                         if missing:
                             raise ValueError(f'Thieu cot: {missing}')
