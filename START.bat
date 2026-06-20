@@ -7,7 +7,6 @@ echo  DOI CHIEU ACH - GL02 vs MIS Hub
 echo ============================================================
 echo.
 
-REM Chuyen ve thu muc chua START.bat (dung absolute path noi bo)
 cd /d "%~dp0"
 
 REM ============================================================
@@ -25,7 +24,6 @@ if not errorlevel 1 goto :PYTHON_OK
 echo [!] Cai tu dong that bai. Tai Python tai:
 echo     https://www.python.org/downloads/
 echo     (Tick "Add Python to PATH" khi cai)
-start https://www.python.org/downloads/
 pause & exit /b 1
 
 :PYTHON_OK
@@ -34,18 +32,20 @@ echo [OK] Python san sang.
 REM ============================================================
 REM BUOC 2: KIEM TRA THU VIEN
 REM ============================================================
-python -c "import pandas, pyzipper, xlsxwriter, calamine, openpyxl" >nul 2>&1
+python -c "import pandas, pyzipper, xlsxwriter, openpyxl, tqdm; import python_calamine" >nul 2>&1
 if not errorlevel 1 goto :LIB_OK
 echo [INFO] Dang cai thu vien...
 python -m pip install -r requirements.txt --quiet
 if errorlevel 1 ( echo [LOI] Cai thu vien that bai. & pause & exit /b 1 )
+REM Cai them python-calamine neu pip install tren bo sot
+python -m pip install python-calamine --quiet >nul 2>&1
 :LIB_OK
 echo [OK] Thu vien san sang.
 
 REM ============================================================
 REM BUOC 3: XAC DINH THU MUC DU LIEU
-REM   - Keo tha FOLDER vao START.bat  -> %1 = duong dan folder do
-REM   - Chay truc tiep double-click   -> dung thu muc "input"
+REM   - Keo tha FOLDER vao START.bat -> %1 = duong dan folder do
+REM   - Double-click truc tiep       -> dung thu muc "input"
 REM ============================================================
 echo.
 set "INPUT_DIR="
@@ -96,8 +96,6 @@ echo [OK] Ngay: %NGAY_DC%
 
 REM ============================================================
 REM BUOC 5: CHAY DOI CHIEU
-REM   Dung relative path (input, output) vi da cd vao thu muc goc
-REM   Tranh truyen path Unicode qua command line
 REM ============================================================
 echo.
 echo [INFO] Bat dau xu ly...
