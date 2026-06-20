@@ -3,7 +3,10 @@ file du liẹu/
 file ket qua/
 input/
 output/
+output_*/
+uploads/
 DOI CHIEU ACH/
+*.zip
 
 # File debug tam thoi
 debug_ach.py
