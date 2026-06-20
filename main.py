@@ -271,6 +271,20 @@ def main_from_dir(input_dir: str, output_dir: str,
     tpay_den = ngay_dt.replace(hour=23, minute=0, second=0)
 
     os.makedirs(output_dir, exist_ok=True)
+
+    # Kiem tra file output co bi khoa (Excel dang mo) TRUOC khi xu ly 7 phut
+    ngay_check = ngay_dt.strftime('%Y%m%d')
+    output_xlsx = os.path.join(output_dir, f'doi_chieu_{ngay_check}.xlsx')
+    if os.path.exists(output_xlsx):
+        try:
+            with open(output_xlsx, 'a'):
+                pass
+        except PermissionError:
+            raise PermissionError(
+                f'\n[LOI] File dang mo trong Excel. Vui long DONG FILE roi chay lai:\n'
+                f'       {os.path.abspath(output_xlsx)}'
+            )
+
     log(f'Ngay doi chieu: {ngay_str_cfg}')
 
     session_id    = doc_session(input_dir)
