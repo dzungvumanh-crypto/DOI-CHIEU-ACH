@@ -18,7 +18,7 @@ app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500 MB
 
 socketio = SocketIO(
     app,
-    async_mode='eventlet',
+    async_mode='threading',
     cors_allowed_origins='*',
     ping_timeout=300,
     ping_interval=25,

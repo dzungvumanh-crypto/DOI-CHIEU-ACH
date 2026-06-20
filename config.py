@@ -1,11 +1,21 @@
+import os
 from datetime import datetime, timedelta
 
-ZIP_PASSWORD   = b'DACwLdHi'
+# C5: ZIP_PASSWORD doc tu bien moi truong, fallback sang gia tri mac dinh
+ZIP_PASSWORD   = os.environ.get('DOI_CHIEU_ZIP_PASSWORD', 'DACwLdHi').encode()
+
 INPUT_DIR      = './input'
 OUTPUT_DIR     = './output'
 
 # Ngay can doi chieu - dinh dang 'dd/mm/yyyy'
 NGAY_DOI_CHIEU = '11/06/2026'
+
+# C3: Danh sach cot can giu khi doc file GL02 — nguon duy nhat de tranh sai lech
+COLS_NPO = [
+    'TRDATE', 'TRBRCD', 'USERID', 'JOURSEQ', 'DYTRSEQ', 'LOCAC', 'CCY',
+    'BUSCD', 'UNIT', 'TRCD', 'CUSTOMER', 'TRTP', 'REFERENCE',
+    'REMARK', 'DRAMOUNT', 'CRAMOUNT', 'CRTDTM',
+]
 
 # ---- Khong chinh sua ben duoi ----
 _ngay_dt: datetime = datetime.strptime(NGAY_DOI_CHIEU, '%d/%m/%Y')

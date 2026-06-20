@@ -2,7 +2,7 @@ import re
 import io
 import pyzipper
 import pandas as pd
-from config import ZIP_PASSWORD
+from config import ZIP_PASSWORD, COLS_NPO as _COLS_NPO
 
 _COLS_REQUIRED = ['TRBRCD', 'REFERENCE', 'DRAMOUNT', 'CRAMOUNT']
 
@@ -27,6 +27,7 @@ def _doc_zip(zip_path: str) -> pd.DataFrame:
                         df = pd.read_csv(
                             io.BytesIO(raw),
                             dtype=str,
+                            usecols=lambda c: c in _COLS_NPO,
                             encoding=enc,
                             low_memory=False,
                         )
@@ -37,7 +38,7 @@ def _doc_zip(zip_path: str) -> pd.DataFrame:
                         break
                     except UnicodeDecodeError:
                         continue
-    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=_COLS_NPO)
 
 
 def xu_ly_gl02(zip_path: str):

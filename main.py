@@ -33,11 +33,8 @@ from tqdm import tqdm
 
 
 # ─── Cot can giu cho tung loai DataFrame ──────────────────────────
-_COLS_NPO = [
-    'TRDATE', 'TRBRCD', 'USERID', 'JOURSEQ', 'DYTRSEQ', 'LOCAC', 'CCY',
-    'BUSCD', 'UNIT', 'TRCD', 'CUSTOMER', 'TRTP', 'REFERENCE',
-    'REMARK', 'DRAMOUNT', 'CRAMOUNT', 'CRTDTM',
-]
+# C3: lay tu config.py — nguon duy nhat, dong bo voi b2_xu_ly_gl02.py
+_COLS_NPO = config.COLS_NPO
 
 _COLS_MIS_DI = [
     'NGAY_GIAO_DICH', 'CHI_NHANH', 'CN tiền Hub', 'REFHUB', 'MSGREF',
@@ -207,6 +204,8 @@ def xuat_excel(output_path: str, session_id: str,
             ws.set_tab_color(color)
             ws.write(0, 0, f'[Du lieu lon - xem file: {os.path.basename(csv_path)}]')
             ws.write(1, 0, f'Tong so dong: {len(df):,}')
+            ws.write(2, 0, 'LUU Y: Mo file CSV qua Excel > Data > Tu Van ban/CSV (khong double-click truc tiep).')
+            ws.write(3, 0, 'Double-click co the mat so 0 dau o cot TRACE, MSGSEQ va sai dinh dang so tien.')
             print(f'[CSV] {sheet_name}: {len(df):,} dong -> {csv_path}')
             continue
 
