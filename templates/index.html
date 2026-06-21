@@ -4,7 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Doi Chieu ACH</title>
-<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<!-- socket.io phuc vu noi bo, khong can internet -->
+<script src="/static/socket.io.min.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -24,29 +25,14 @@
     width: 100%;
     max-width: 700px;
   }
-  h1 {
-    color: #1a56a0;
-    font-size: 22px;
-    margin-bottom: 6px;
-  }
-  .subtitle {
-    color: #6b7280;
-    font-size: 13px;
-    margin-bottom: 28px;
-  }
-  .field-row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 20px;
-  }
+  h1 { color: #1a56a0; font-size: 22px; margin-bottom: 6px; }
+  .subtitle { color: #6b7280; font-size: 13px; margin-bottom: 28px; }
+
+  .field-row { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
   .field-row label { font-size: 14px; color: #374151; white-space: nowrap; }
   .field-row input[type=text] {
-    padding: 7px 12px;
-    border: 1px solid #d1d5db;
-    border-radius: 6px;
-    font-size: 14px;
-    width: 160px;
+    padding: 7px 12px; border: 1px solid #d1d5db;
+    border-radius: 6px; font-size: 14px; width: 160px;
   }
   .field-row small { color: #9ca3af; font-size: 12px; }
 
@@ -60,71 +46,43 @@
     transition: background .15s, border-color .15s;
     user-select: none;
   }
-  #dropzone:hover, #dropzone.drag-over {
-    background: #dbeafe;
-    border-color: #3b82f6;
-  }
+  #dropzone:hover, #dropzone.drag-over { background: #dbeafe; border-color: #3b82f6; }
   #dropzone .icon { font-size: 42px; margin-bottom: 12px; }
   #dropzone .main-text { font-size: 16px; color: #1e40af; font-weight: 600; }
   #dropzone .sub-text  { font-size: 13px; color: #6b7280; margin-top: 6px; }
-  #browser-note        { font-size: 11px; color: #9ca3af; margin-top: 8px; text-align: center; }
+  #file-count { font-size: 12px; color: #059669; margin-top: 8px; font-weight: 600; display: none; }
+  #browser-note { font-size: 11px; color: #9ca3af; margin-top: 8px; text-align: center; }
 
-  #status-bar {
-    margin-top: 20px;
-    display: none;
-    align-items: center;
-    gap: 10px;
-  }
+  #status-bar { margin-top: 20px; display: none; align-items: center; gap: 10px; }
   #status-bar.visible { display: flex; }
   .spinner {
     width: 18px; height: 18px;
-    border: 2.5px solid #bfdbfe;
-    border-top-color: #3b82f6;
-    border-radius: 50%;
-    animation: spin .7s linear infinite;
-    flex-shrink: 0;
+    border: 2.5px solid #bfdbfe; border-top-color: #3b82f6;
+    border-radius: 50%; animation: spin .7s linear infinite; flex-shrink: 0;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
   #status-text { font-size: 13px; color: #374151; }
 
   #log {
-    background: #111827;
-    color: #d1fae5;
-    padding: 14px 16px;
-    border-radius: 10px;
-    height: 240px;
-    overflow-y: auto;
+    background: #111827; color: #d1fae5;
+    padding: 14px 16px; border-radius: 10px;
+    height: 240px; overflow-y: auto;
     font-family: 'Cascadia Code', 'Consolas', monospace;
-    font-size: 12.5px;
-    margin-top: 18px;
-    line-height: 1.55;
-    display: none;
+    font-size: 12.5px; margin-top: 18px; line-height: 1.55; display: none;
   }
   #log.visible { display: block; }
   #log .line-err  { color: #fca5a5; }
   #log .line-done { color: #86efac; font-weight: 600; }
   #log .line-csv  { color: #fcd34d; }
 
-  #download-section {
-    margin-top: 20px;
-    display: none;
-  }
+  #download-section { margin-top: 20px; display: none; }
   #download-section.visible { display: block; }
   #download-section h3 { font-size: 14px; color: #374151; margin-bottom: 10px; }
   .dl-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 9px 18px;
-    background: #1a56a0;
-    color: #fff;
-    border: none;
-    border-radius: 7px;
-    font-size: 14px;
-    cursor: pointer;
-    text-decoration: none;
-    margin-right: 8px;
-    margin-bottom: 8px;
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 9px 18px; background: #1a56a0; color: #fff;
+    border: none; border-radius: 7px; font-size: 14px; cursor: pointer;
+    text-decoration: none; margin-right: 8px; margin-bottom: 8px;
     transition: background .15s;
   }
   .dl-btn:hover { background: #1e40af; }
@@ -132,22 +90,26 @@
   .dl-btn.csv-btn:hover { background: #047857; }
 
   #reset-btn {
-    margin-top: 16px;
-    padding: 8px 18px;
-    background: #f3f4f6;
-    color: #374151;
-    border: 1px solid #d1d5db;
-    border-radius: 7px;
-    font-size: 13px;
-    cursor: pointer;
+    margin-top: 16px; padding: 8px 18px;
+    background: #f3f4f6; color: #374151;
+    border: 1px solid #d1d5db; border-radius: 7px; font-size: 13px; cursor: pointer;
   }
   #reset-btn:hover { background: #e5e7eb; }
+
+  .upload-btn {
+    display: inline-block; margin-top: 14px;
+    padding: 9px 22px; background: #1a56a0; color: #fff;
+    border: none; border-radius: 7px; font-size: 14px; cursor: pointer;
+    transition: background .15s;
+  }
+  .upload-btn:hover { background: #1e40af; }
+  .upload-btn:disabled { background: #9ca3af; cursor: not-allowed; }
 </style>
 </head>
 <body>
 <div class="container">
   <h1>Doi Chieu ACH</h1>
-  <p class="subtitle">GL02 (NPO) vs MIS — Upload folder du lieu va nhan ket qua tu dong</p>
+  <p class="subtitle">GL02 (NPO) vs MIS — Upload folder du lieu, nhan ket qua tu dong</p>
 
   <div class="field-row">
     <label>Ngay doi chieu:</label>
@@ -155,14 +117,33 @@
     <small>(de trong = lay tu config.py)</small>
   </div>
 
-  <div id="dropzone" onclick="document.getElementById('fileInput').click()">
-    <div class="icon">📂</div>
-    <div class="main-text">Keo tha folder vao day</div>
-    <div class="sub-text">hoac click de chon file</div>
-    <input type="file" id="fileInput" multiple webkitdirectory style="display:none">
+  <!-- Zone keo tha -->
+  <div id="dropzone">
+    <div class="icon">&#128193;</div>
+    <div class="main-text">Keo tha FOLDER du lieu vao day</div>
+    <div class="sub-text">hoac click nut ben duoi de chon folder / file</div>
+    <div id="file-count"></div>
   </div>
+
+  <!-- Nut chon folder / chon file rieng le -->
+  <div style="margin-top:12px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+    <button class="upload-btn" onclick="document.getElementById('folderInput').click()">
+      &#128193; Chon Folder
+    </button>
+    <button class="upload-btn" onclick="document.getElementById('fileInput').click()"
+            style="background:#374151;">
+      &#128196; Chon File le
+    </button>
+    <button class="upload-btn" id="sendBtn" onclick="sendFiles()" disabled
+            style="background:#059669;">
+      &#9654; Xu ly
+    </button>
+    <input type="file" id="folderInput" webkitdirectory multiple style="display:none">
+    <input type="file" id="fileInput"   multiple           style="display:none">
+  </div>
+
   <div id="browser-note">
-    Keo tha folder: chi ho tro Chrome va Edge. Firefox dung nut click de chon file.
+    Keo tha folder: ho tro Chrome va Edge. Firefox dung nut "Chon Folder".
   </div>
 
   <div id="status-bar">
@@ -180,14 +161,18 @@
 </div>
 
 <script>
-  const socket      = io({ transports: ['websocket', 'polling'] });
-  const logEl       = document.getElementById('log');
-  const statusBar   = document.getElementById('status-bar');
-  const statusText  = document.getElementById('status-text');
-  const dlSection   = document.getElementById('download-section');
-  const dlButtons   = document.getElementById('dl-buttons');
+  // --- SocketIO ---
+  const socket     = io({ transports: ['websocket', 'polling'] });
+  const logEl      = document.getElementById('log');
+  const statusBar  = document.getElementById('status-bar');
+  const statusText = document.getElementById('status-text');
+  const dlSection  = document.getElementById('download-section');
+  const dlButtons  = document.getElementById('dl-buttons');
+  const fileCount  = document.getElementById('file-count');
+  const sendBtn    = document.getElementById('sendBtn');
 
   let currentJobId = '';
+  let pendingFiles = [];   // files chon/drop, cho den khi bam Xu ly
 
   function addLog(msg, cls) {
     const line = document.createElement('div');
@@ -197,11 +182,13 @@
     logEl.scrollTop = logEl.scrollHeight;
   }
 
+  socket.on('connect',    () => addLog('[OK] Ket noi server thanh cong.'));
+  socket.on('disconnect', () => addLog('[!] Mat ket noi server.', 'line-err'));
+
   socket.on('log', d => {
     if (d.job_id !== currentJobId) return;
-    const cls = d.msg.includes('[CSV]') ? 'line-csv'
-              : d.msg.includes('LOI') || d.msg.includes('Error') ? 'line-err'
-              : '';
+    const cls = d.msg.includes('[CSV]')  ? 'line-csv'
+              : d.msg.includes('LOI') || d.msg.includes('Error') ? 'line-err' : '';
     addLog(d.msg, cls);
     statusText.textContent = d.msg.replace(/^\[.*?\]\s*/, '').substring(0, 80);
   });
@@ -218,7 +205,7 @@
       a.className = 'dl-btn' + (isCSV ? ' csv-btn' : '');
       a.href = f.url;
       a.download = f.name;
-      a.innerHTML = (isCSV ? '📄' : '📊') + ' ' + f.name;
+      a.innerHTML = (isCSV ? '&#128196;' : '&#128202;') + ' ' + f.name;
       dlButtons.appendChild(a);
     });
   });
@@ -227,21 +214,59 @@
     if (d.job_id !== currentJobId) return;
     addLog('LOI: ' + d.msg, 'line-err');
     statusBar.classList.remove('visible');
-    statusText.textContent = '';
   });
 
-  function uploadFiles(files) {
-    if (!files || !files.length) return;
+  // --- Lay file tu DataTransferItem (folder drag tu Explorer) ---
+  function getFilesFromEntry(entry) {
+    return new Promise(resolve => {
+      if (entry.isFile) {
+        entry.file(f => {
+          // Gan webkitRelativePath de server biet duong dan
+          try { Object.defineProperty(f, 'webkitRelativePath', { value: entry.fullPath.slice(1), configurable: true }); } catch(e){}
+          resolve([f]);
+        }, () => resolve([]));
+      } else if (entry.isDirectory) {
+        const reader = entry.createReader();
+        const results = [];
+        function readBatch() {
+          reader.readEntries(async entries => {
+            if (!entries.length) return resolve(results);
+            const nested = await Promise.all(entries.map(e => getFilesFromEntry(e)));
+            nested.forEach(arr => results.push(...arr));
+            readBatch();  // co the co nhieu batch (gioi han 100 items/lan)
+          }, () => resolve(results));
+        }
+        readBatch();
+      } else {
+        resolve([]);
+      }
+    });
+  }
 
-    resetUI();
+  function setFiles(files) {
+    pendingFiles = [...files].filter(f => f.size > 0);
+    if (pendingFiles.length === 0) {
+      fileCount.style.display = 'none';
+      sendBtn.disabled = true;
+      return;
+    }
+    fileCount.textContent = 'Da chon ' + pendingFiles.length + ' file. Bam "Xu ly" de bat dau.';
+    fileCount.style.display = 'block';
+    sendBtn.disabled = false;
+  }
+
+  // --- Xu ly khi bam nut "Xu ly" ---
+  function sendFiles() {
+    if (!pendingFiles.length) return;
+    resetUI(false);
     logEl.classList.add('visible');
     statusBar.classList.add('visible');
-    addLog('Dang tai len ' + files.length + ' file...');
+    addLog('Dang tai len ' + pendingFiles.length + ' file...');
 
     const fd   = new FormData();
     const ngay = document.getElementById('ngay').value.trim();
     if (ngay) fd.append('ngay_doi_chieu', ngay);
-    for (const f of files) {
+    for (const f of pendingFiles) {
       fd.append('files', f, f.webkitRelativePath || f.name);
     }
 
@@ -255,30 +280,53 @@
       .catch(e => addLog('Loi ket noi: ' + e, 'line-err'));
   }
 
-  function resetUI() {
+  function resetUI(clearFiles) {
+    if (clearFiles === undefined) clearFiles = true;
     currentJobId = '';
     logEl.innerHTML = '';
     logEl.classList.remove('visible');
     statusBar.classList.remove('visible');
     dlSection.classList.remove('visible');
     dlButtons.innerHTML = '';
-    document.getElementById('fileInput').value = '';
+    if (clearFiles) {
+      pendingFiles = [];
+      fileCount.style.display = 'none';
+      sendBtn.disabled = true;
+      document.getElementById('folderInput').value = '';
+      document.getElementById('fileInput').value = '';
+    }
   }
 
-  // Drag and drop
+  // --- Keo tha folder tu Explorer ---
   const zone = document.getElementById('dropzone');
   zone.addEventListener('dragover',  e => { e.preventDefault(); zone.classList.add('drag-over'); });
   zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
-  zone.addEventListener('drop', e => {
+  zone.addEventListener('drop', async e => {
     e.preventDefault();
     zone.classList.remove('drag-over');
-    uploadFiles([...e.dataTransfer.files]);
+
+    const items = e.dataTransfer.items;
+    if (items && items.length && items[0].webkitGetAsEntry) {
+      // Su dung FileSystem API de doc ca folder (Chrome/Edge)
+      addLog('Dang quet folder...'); logEl.classList.add('visible');
+      const all = [];
+      const promises = [];
+      for (let i = 0; i < items.length; i++) {
+        const entry = items[i].webkitGetAsEntry();
+        if (entry) promises.push(getFilesFromEntry(entry).then(fs => all.push(...fs)));
+      }
+      await Promise.all(promises);
+      logEl.innerHTML = '';
+      setFiles(all);
+    } else {
+      // Fallback: chi nhan file don le
+      setFiles(e.dataTransfer.files);
+    }
   });
 
-  // Click chon file
-  document.getElementById('fileInput').addEventListener('change', e => {
-    uploadFiles([...e.target.files]);
-  });
+  // --- Chon folder bang input ---
+  document.getElementById('folderInput').addEventListener('change', e => setFiles(e.target.files));
+  document.getElementById('fileInput').addEventListener('change',   e => setFiles(e.target.files));
 </script>
 </body>
 </html>

@@ -45,10 +45,16 @@ def upload_files():
     if not files:
         return jsonify({'error': 'Khong co file nao duoc gui len'}), 400
 
+    saved = 0
     for f in files:
-        filename = os.path.basename(f.filename)
-        if filename:
+        filename = os.path.basename(f.filename.replace('\\', '/'))
+        if filename and not filename.startswith('~$'):
             f.save(os.path.join(job_dir, filename))
+            saved += 1
+
+    if saved == 0:
+        return jsonify({'error': 'Khong luu duoc file nao. Thu chon lai folder/file.'}), 400
+    print(f'[UPLOAD] job={job_id}  saved={saved} files  dir={job_dir}')
 
     ngay = request.form.get('ngay_doi_chieu', '').strip()
 
@@ -91,11 +97,14 @@ def _run_processing(job_id: str, input_dir: str, ngay: str):
 
 @app.route('/download/<filename>')
 def download(filename):
-    # Ngan path traversal
     filename = os.path.basename(filename)
     path = os.path.join(OUTPUT_DIR, filename)
     if not os.path.exists(path):
-        return 'File khong ton tai', 404
+        print(f'[404] {path}  |  OUTPUT_DIR={OUTPUT_DIR}')
+        files_in_dir = os.listdir(OUTPUT_DIR) if os.path.isdir(OUTPUT_DIR) else []
+        return (f'File khong ton tai: {filename}\n'
+                f'Thu muc output: {OUTPUT_DIR}\n'
+                f'Cac file hien co: {files_in_dir}'), 404
     return send_file(path, as_attachment=True)
 
 
