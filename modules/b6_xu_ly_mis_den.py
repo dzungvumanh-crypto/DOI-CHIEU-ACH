@@ -36,7 +36,7 @@ def _doc_zip(zip_path: str) -> pd.DataFrame:
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=_COLS)
 
 
-def xu_ly_mis_den(zip_paths: List[str], session_id: str, ngay_doi_chieu: datetime):
+def xu_ly_mis_den(zip_paths: List[str], session_id: str, ngay_doi_chieu: datetime, log_callback=None):
     """
     Doc 2 zip MIS_DEN song song, tra ve df_mis_den da xu ly.
     """
@@ -79,5 +79,6 @@ def xu_ly_mis_den(zip_paths: List[str], session_id: str, ngay_doi_chieu: datetim
     # KEY_DEN_HUB
     df['KEY_DEN_HUB'] = df['TRACE'] + df['SO_TIEN'].astype(str)
 
-    print(f'[B6] MIS_DEN | {len(df):,} dong sau loc')
+    _log = log_callback or print
+    _log(f'[B6] MIS_DEN | {len(df):,} dong sau loc')
     return df.reset_index(drop=True)

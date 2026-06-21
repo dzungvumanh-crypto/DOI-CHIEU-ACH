@@ -172,7 +172,7 @@ def _tim_gw_xlsx(input_dir: str) -> str:
 def xuat_excel(output_path: str, session_id: str,
                df_mis_di_khop, df_npo_di_thua, df_mis_di_thua,
                df_timeout, df_mis_den_khop, df_npo_den_thua,
-               df_mis_den_thua, df_gw_raw):
+               df_mis_den_thua, df_gw_raw, log_callback=None):
 
     output_dir  = os.path.dirname(os.path.abspath(output_path))
     ngay_str    = os.path.basename(output_path).replace('doi_chieu_', '').replace('.xlsx', '')
@@ -192,11 +192,13 @@ def xuat_excel(output_path: str, session_id: str,
 
     workbook = xlsxwriter.Workbook(output_path, {'strings_to_numbers': False, 'constant_memory': True})
     csv_files_created = []
+    _log = log_callback or print
+    total_sheets = len(sheets)
 
-    for sheet_name, df, color in tqdm(sheets, desc='Ghi Excel', unit='sheet'):
+    for i, (sheet_name, df, color) in enumerate(tqdm(sheets, desc='Ghi Excel', unit='sheet'), 1):
+        _log(f'[EXCEL] ({i}/{total_sheets}) Ghi sheet: {sheet_name}...')
         # Sheet lon → ghi CSV rieng, de note trong Excel
-        if (df is not None and len(df) > CSV_THRESHOLD
-                and sheet_name in ('MIS_DI_KHOP', 'MIS_DEN_KHOP')):
+        if df is not None and len(df) > CSV_THRESHOLD:
             csv_path = os.path.join(output_dir, f'{sheet_name}_{ngay_str}.csv')
             df.to_csv(csv_path, index=False, encoding='utf-8-sig')
             csv_files_created.append((sheet_name, csv_path))
@@ -206,7 +208,7 @@ def xuat_excel(output_path: str, session_id: str,
             ws.write(1, 0, f'Tong so dong: {len(df):,}')
             ws.write(2, 0, 'LUU Y: Mo file CSV qua Excel > Data > Tu Van ban/CSV (khong double-click truc tiep).')
             ws.write(3, 0, 'Double-click co the mat so 0 dau o cot TRACE, MSGSEQ va sai dinh dang so tien.')
-            print(f'[CSV] {sheet_name}: {len(df):,} dong -> {csv_path}')
+            _log(f'[CSV] {sheet_name}: {len(df):,} dong -> {csv_path}')
             continue
 
         ws = workbook.add_worksheet(sheet_name)
@@ -233,9 +235,9 @@ def xuat_excel(output_path: str, session_id: str,
             _viet_sheet(workbook, ws, df, color)
 
     workbook.close()
-    print(f'\n[DONE] Excel: {output_path}')
+    _log(f'[DONE] Excel: {output_path}')
     for name, path in csv_files_created:
-        print(f'       CSV  : {path}  ({name})')
+        _log(f'       CSV  : {path}  ({name})')
 
 
 # ─── main_from_dir — dung cho Web UI (thread-safe) ────────────────
@@ -287,7 +289,7 @@ def main_from_dir(input_dir: str, output_dir: str,
 
     log(f'Ngay doi chieu: {ngay_str_cfg}')
 
-    session_id    = doc_session(input_dir)
+    session_id    = doc_session(input_dir, log_callback)
     gl02_files    = _tim_file(input_dir, 'GL02*.zip')
     gw_path       = _tim_gw_xlsx(input_dir)
     mis_di_files  = _tim_file(input_dir, '*_DI_*.zip')
@@ -304,9 +306,9 @@ def main_from_dir(input_dir: str, output_dir: str,
 
     # Phase 1: B2 + B3 + B6 song song
     with ThreadPoolExecutor(max_workers=3) as ex:
-        f_gl02    = ex.submit(xu_ly_gl02,    gl02_files[0])
-        f_gw      = ex.submit(xu_ly_gw,      gw_path, session_id)
-        f_mis_den = ex.submit(xu_ly_mis_den, mis_den_files, session_id, ngay_dt)
+        f_gl02    = ex.submit(xu_ly_gl02,    gl02_files[0], log_callback)
+        f_gw      = ex.submit(xu_ly_gw,      gw_path, session_id, log_callback)
+        f_mis_den = ex.submit(xu_ly_mis_den, mis_den_files, session_id, ngay_dt, log_callback)
 
         npo_di, npo_den          = f_gl02.result()
         dict_gw_count, df_gw_raw = f_gw.result()
@@ -315,13 +317,13 @@ def main_from_dir(input_dir: str, output_dir: str,
     # B4: can dict_gw_count tu B3, truyen tpay tuong minh (thread-safe)
     mis_di_final, df_timeout = xu_ly_mis_di(
         mis_di_files, dict_gw_count, session_id,
-        tpay_tu=tpay_tu, tpay_den=tpay_den
+        tpay_tu=tpay_tu, tpay_den=tpay_den, log_callback=log_callback
     )
 
     # Phase 2: B5 + B7 song song
     with ThreadPoolExecutor(max_workers=2) as ex:
-        f_di  = ex.submit(doi_chieu_di,  npo_di,  mis_di_final)
-        f_den = ex.submit(doi_chieu_den, npo_den, df_mis_den)
+        f_di  = ex.submit(doi_chieu_di,  npo_di,  mis_di_final, log_callback)
+        f_den = ex.submit(doi_chieu_den, npo_den, df_mis_den,   log_callback)
 
         df_mis_di_khop, df_npo_di_thua, df_mis_di_thua    = f_di.result()
         df_mis_den_khop, df_npo_den_thua, df_mis_den_thua = f_den.result()
@@ -332,7 +334,7 @@ def main_from_dir(input_dir: str, output_dir: str,
         df_mis_di_khop, df_npo_di_thua, df_mis_di_thua,
         df_timeout,
         df_mis_den_khop, df_npo_den_thua, df_mis_den_thua,
-        df_gw_raw,
+        df_gw_raw, log_callback=log_callback,
     )
     log(f'Hoan thanh: {output_path}')
     return output_path

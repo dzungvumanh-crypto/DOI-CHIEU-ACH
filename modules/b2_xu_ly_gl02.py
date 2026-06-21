@@ -43,7 +43,7 @@ def _doc_zip(zip_path: str) -> pd.DataFrame:
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=_COLS_NPO)
 
 
-def xu_ly_gl02(zip_path: str):
+def xu_ly_gl02(zip_path: str, log_callback=None):
     """
     Doc GL02 zip, tra ve (df_npo_di, df_npo_den).
     """
@@ -76,5 +76,6 @@ def xu_ly_gl02(zip_path: str):
         + npo_den['DRAMOUNT'].astype(str)
     )
 
-    print(f'[B2] GL02 | NPO_DI: {len(npo_di):,} dong | NPO_DEN: {len(npo_den):,} dong')
+    _log = log_callback or print
+    _log(f'[B2] GL02 | NPO_DI: {len(npo_di):,} dong | NPO_DEN: {len(npo_den):,} dong')
     return npo_di.reset_index(drop=True), npo_den.reset_index(drop=True)

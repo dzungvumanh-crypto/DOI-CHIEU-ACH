@@ -3,7 +3,7 @@ import glob
 import os
 
 
-def doc_session(input_dir: str) -> str:
+def doc_session(input_dir: str, log_callback=None) -> str:
     """
     Tim file PDF trong input_dir (de quy), lay so session tu ten file.
     Ten file dang: ACH_20260612_VBAAVNVN_NRT_15882_N03_1.pdf
@@ -20,5 +20,6 @@ def doc_session(input_dir: str) -> str:
         raise ValueError(f'Khong the lay session tu ten file: {ten_file}')
 
     session_id = m.group(1)
-    print(f'[B1] Session: {session_id}  (tu file: {ten_file})')
+    _log = log_callback or print
+    _log(f'[B1] Session: {session_id}  (tu file: {ten_file})')
     return session_id

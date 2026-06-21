@@ -22,7 +22,7 @@ def _doc_mot_sheet(xl: pd.ExcelFile, sheet_name: str) -> pd.DataFrame:
     return df
 
 
-def xu_ly_gw(xlsx_path: str, session_id: str):
+def xu_ly_gw(xlsx_path: str, session_id: str, log_callback=None):
     """
     Doc file GW Excel (tat ca sheet), tra ve (dict_gw_count, df_gw_raw).
     dict_gw_count: {KEY_GW: count}  —  KEY_GW = str(BRCD) + str(STTLMAMT_int)
@@ -52,5 +52,6 @@ def xu_ly_gw(xlsx_path: str, session_id: str):
 
     dict_gw_count = df['KEY_GW'].value_counts().to_dict()
 
-    print(f'[B3] GW | {len(df):,} dong (session {session_id}) | {len(dict_gw_count):,} KEY_GW unique')
+    _log = log_callback or print
+    _log(f'[B3] GW | {len(df):,} dong (session {session_id}) | {len(dict_gw_count):,} KEY_GW unique')
     return dict_gw_count, df.reset_index(drop=True)

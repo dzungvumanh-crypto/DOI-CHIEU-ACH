@@ -86,9 +86,8 @@ def _run_processing(job_id: str, input_dir: str, ngay: str):
         result_files = [{'name': os.path.basename(output_path),
                          'url': f'/download/{os.path.basename(output_path)}'}]
         for fname in os.listdir(OUTPUT_DIR):
-            if fname.startswith(('MIS_DI_KHOP_', 'MIS_DEN_KHOP_')) and fname.endswith('.csv'):
-                if base.replace('doi_chieu_', '') in fname:
-                    result_files.append({'name': fname, 'url': f'/download/{fname}'})
+            if fname.endswith('.csv') and base.replace('doi_chieu_', '') in fname:
+                result_files.append({'name': fname, 'url': f'/download/{fname}'})
 
         socketio.emit('done', {'job_id': job_id, 'files': result_files})
     except Exception as e:

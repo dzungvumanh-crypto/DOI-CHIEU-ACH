@@ -56,6 +56,11 @@
 
   #status-bar { margin-top: 20px; display: none; align-items: center; gap: 10px; }
   #status-bar.visible { display: flex; }
+  #progress-wrap { margin-top: 10px; display: none; }
+  #progress-wrap.visible { display: block; }
+  #stage-text { font-size: 11px; color: #6b7280; margin-bottom: 4px; }
+  #progress-track { background: #e5e7eb; border-radius: 6px; height: 8px; overflow: hidden; }
+  #progress-bar { height: 100%; background: #3b82f6; width: 0%; transition: width .4s ease; }
   .spinner {
     width: 18px; height: 18px;
     border: 2.5px solid #bfdbfe; border-top-color: #3b82f6;
@@ -67,7 +72,7 @@
   #log {
     background: #111827; color: #d1fae5;
     padding: 14px 16px; border-radius: 10px;
-    height: 240px; overflow-y: auto;
+    height: 400px; overflow-y: auto;
     font-family: 'Cascadia Code', 'Consolas', monospace;
     font-size: 12.5px; margin-top: 18px; line-height: 1.55; display: none;
   }
@@ -152,6 +157,11 @@
     <span id="status-text">Dang xu ly...</span>
   </div>
 
+  <div id="progress-wrap">
+    <div id="stage-text">Khoi dong...</div>
+    <div id="progress-track"><div id="progress-bar"></div></div>
+  </div>
+
   <div id="log"></div>
 
   <div id="download-section">
@@ -175,14 +185,49 @@
   })();
 
   // --- SocketIO ---
-  const socket     = io({ transports: ['websocket', 'polling'] });
-  const logEl      = document.getElementById('log');
-  const statusBar  = document.getElementById('status-bar');
-  const statusText = document.getElementById('status-text');
-  const dlSection  = document.getElementById('download-section');
-  const dlButtons  = document.getElementById('dl-buttons');
-  const fileCount  = document.getElementById('file-count');
-  const sendBtn    = document.getElementById('sendBtn');
+  const socket       = io({ transports: ['websocket', 'polling'] });
+  const logEl        = document.getElementById('log');
+  const statusBar    = document.getElementById('status-bar');
+  const statusText   = document.getElementById('status-text');
+  const progressWrap = document.getElementById('progress-wrap');
+  const progressBar  = document.getElementById('progress-bar');
+  const stageText    = document.getElementById('stage-text');
+  const dlSection    = document.getElementById('download-section');
+  const dlButtons    = document.getElementById('dl-buttons');
+  const fileCount    = document.getElementById('file-count');
+  const sendBtn      = document.getElementById('sendBtn');
+
+  // Cac moc tien trinh dua tren ky hieu trong log message
+  const STAGE_MAP = [
+    { marker: 'Tim thay: GL02',  pct: 8,  label: 'Tim file du lieu...' },
+    { marker: '[B1]',            pct: 10, label: 'B1: Doc Session ID...' },
+    { marker: '[B2]',            pct: 32, label: 'B2: Xu ly GL02 (NPO)...' },
+    { marker: '[B3]',            pct: 40, label: 'B3: Xu ly GW...' },
+    { marker: '[B6]',            pct: 48, label: 'B6: Xu ly MIS_DEN...' },
+    { marker: '[B4]',            pct: 66, label: 'B4: Xu ly MIS_DI...' },
+    { marker: '[B5]',            pct: 74, label: 'B5: Doi chieu DI...' },
+    { marker: '[B7]',            pct: 78, label: 'B7: Doi chieu DEN...' },
+    { marker: '[EXCEL] (1/',     pct: 80, label: 'Ghi ket qua...' },
+    { marker: '[EXCEL] (4/',     pct: 86, label: 'Ghi ket qua...' },
+    { marker: '[EXCEL] (7/',     pct: 92, label: 'Ghi ket qua...' },
+    { marker: '[DONE] Excel',    pct: 97, label: 'Hoan tat...' },
+    { marker: 'Hoan thanh:',     pct: 100, label: 'Hoan thanh!' },
+  ];
+
+  function setProgress(pct, label) {
+    progressBar.style.width = pct + '%';
+    if (label) stageText.textContent = label;
+    if (pct >= 100) progressBar.style.background = '#059669';
+  }
+
+  function updateProgress(msg) {
+    for (const s of STAGE_MAP) {
+      if (msg.includes(s.marker)) {
+        setProgress(s.pct, s.label);
+        break;
+      }
+    }
+  }
 
   let currentJobId = '';
   let pendingFiles = [];   // files chon/drop, cho den khi bam Xu ly
@@ -203,12 +248,14 @@
     const cls = d.msg.includes('[CSV]')  ? 'line-csv'
               : d.msg.includes('LOI') || d.msg.includes('Error') ? 'line-err' : '';
     addLog(d.msg, cls);
-    statusText.textContent = d.msg.replace(/^\[.*?\]\s*/, '').substring(0, 80);
+    statusText.textContent = d.msg.replace(/^\[.*?\]\s*/, '');
+    updateProgress(d.msg);
   });
 
   socket.on('done', d => {
     if (d.job_id !== currentJobId) return;
     addLog('HOAN THANH!', 'line-done');
+    setProgress(100, 'Hoan thanh!');
     statusBar.classList.remove('visible');
     dlSection.classList.add('visible');
     dlButtons.innerHTML = '';
@@ -274,6 +321,9 @@
     resetUI(false);
     logEl.classList.add('visible');
     statusBar.classList.add('visible');
+    progressWrap.classList.add('visible');
+    progressBar.style.background = '#3b82f6';
+    setProgress(2, 'Dang tai len file...');
     addLog('Dang tai len ' + pendingFiles.length + ' file...');
 
     const fd   = new FormData();
@@ -303,6 +353,10 @@
     logEl.innerHTML = '';
     logEl.classList.remove('visible');
     statusBar.classList.remove('visible');
+    progressWrap.classList.remove('visible');
+    progressBar.style.width = '0%';
+    progressBar.style.background = '#3b82f6';
+    stageText.textContent = 'Khoi dong...';
     dlSection.classList.remove('visible');
     dlButtons.innerHTML = '';
     if (clearFiles) {

@@ -76,7 +76,7 @@ def _get_timeout_indices(df_tpay: pd.DataFrame, df_scnl: pd.DataFrame,
 
 
 def xu_ly_mis_di(zip_paths: List[str], dict_gw_count: Dict[str, int], session_id: str,
-                 tpay_tu: datetime = None, tpay_den: datetime = None):
+                 tpay_tu: datetime = None, tpay_den: datetime = None, log_callback=None):
     """
     Doc 2 zip MIS_DI song song, xu ly va tra ve (df_mis_di_final, df_timeout_khong_kenh).
     tpay_tu / tpay_den: neu truyen thi dung gia tri nay (thread-safe cho Web UI);
@@ -153,7 +153,8 @@ def xu_ly_mis_di(zip_paths: List[str], dict_gw_count: Dict[str, int], session_id
     df_timeout      = df_mis_di.loc[timeout_idx].copy()
     df_mis_di_final = df_mis_di[~df_mis_di.index.isin(timeout_idx)].copy()
 
-    print(
+    _log = log_callback or print
+    _log(
         f'[B4] MIS_DI → tong truoc timeout: {len(df_mis_di):,} | '
         f'SCNL: {len(df_scnl):,} | TXRT: {len(df_txrt):,} | TPAY: {len(df_tpay):,} | '
         f'Timeout khong kenh: {len(df_timeout):,} | Final: {len(df_mis_di_final):,}'
