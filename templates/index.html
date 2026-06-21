@@ -30,9 +30,10 @@
 
   .field-row { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
   .field-row label { font-size: 14px; color: #374151; white-space: nowrap; }
-  .field-row input[type=text] {
+  .field-row input[type=date] {
     padding: 7px 12px; border: 1px solid #d1d5db;
     border-radius: 6px; font-size: 14px; width: 160px;
+    cursor: pointer;
   }
   .field-row small { color: #9ca3af; font-size: 12px; }
 
@@ -113,8 +114,8 @@
 
   <div class="field-row">
     <label>Ngay doi chieu:</label>
-    <input type="text" id="ngay" placeholder="dd/mm/yyyy">
-    <small>(de trong = lay tu config.py)</small>
+    <input type="date" id="ngay">
+    <small id="ngay-hint" style="color:#9ca3af;font-size:12px;"></small>
   </div>
 
   <!-- Zone keo tha -->
@@ -161,6 +162,18 @@
 </div>
 
 <script>
+  // --- Mac dinh chon ngay hom nay ---
+  (function() {
+    const inp = document.getElementById('ngay');
+    const today = new Date();
+    // yyyy-mm-dd (dinh dang HTML date input)
+    const ymd = today.getFullYear() + '-'
+      + String(today.getMonth()+1).padStart(2,'0') + '-'
+      + String(today.getDate()).padStart(2,'0');
+    inp.value = ymd;
+    inp.max = ymd;  // khong cho chon tuong lai
+  })();
+
   // --- SocketIO ---
   const socket     = io({ transports: ['websocket', 'polling'] });
   const logEl      = document.getElementById('log');
@@ -264,8 +277,12 @@
     addLog('Dang tai len ' + pendingFiles.length + ' file...');
 
     const fd   = new FormData();
-    const ngay = document.getElementById('ngay').value.trim();
-    if (ngay) fd.append('ngay_doi_chieu', ngay);
+    // Chuyen yyyy-mm-dd (HTML) sang dd/mm/yyyy (server)
+    const raw = document.getElementById('ngay').value;
+    if (raw) {
+      const [y, m, d] = raw.split('-');
+      fd.append('ngay_doi_chieu', `${d}/${m}/${y}`);
+    }
     for (const f of pendingFiles) {
       fd.append('files', f, f.webkitRelativePath || f.name);
     }
