@@ -36,9 +36,11 @@ REM BUOC 3: CHAY WEB SERVER
 REM ============================================================
 echo.
 echo [INFO] Dang khoi dong Web UI...
-echo [INFO] Mo trinh duyet va truy cap dia chi hien thi ben duoi.
 echo [INFO] Giu cua so nay mo trong luc su dung. Nhan Ctrl+C de dung.
 echo.
+
+REM Doi 2 giay roi tu dong mo trinh duyet
+start "" cmd /c "ping -n 3 127.0.0.1 >nul && start http://localhost:8080"
 
 python web_app.py
 

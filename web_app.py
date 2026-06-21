@@ -91,7 +91,9 @@ def _run_processing(job_id: str, input_dir: str, ngay: str):
 
         socketio.emit('done', {'job_id': job_id, 'files': result_files})
     except Exception as e:
-        socketio.emit('error', {'job_id': job_id, 'msg': str(e)})
+        import traceback
+        err_msg = str(e) + '\n' + traceback.format_exc()
+        socketio.emit('job_error', {'job_id': job_id, 'msg': str(e)})
 
 
 @app.route('/download/<filename>')

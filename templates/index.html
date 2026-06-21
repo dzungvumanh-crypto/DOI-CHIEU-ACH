@@ -270,10 +270,11 @@
     });
   });
 
-  socket.on('error', d => {
+  socket.on('job_error', d => {
     if (d.job_id !== currentJobId) return;
     addLog('LOI: ' + d.msg, 'line-err');
     statusBar.classList.remove('visible');
+    progressWrap.classList.remove('visible');
   });
 
   // --- Lay file tu DataTransferItem (folder drag tu Explorer) ---
