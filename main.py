@@ -26,6 +26,7 @@ from modules.b6_xu_ly_mis_den import xu_ly_mis_den
 from modules.b7_doi_chieu_den import doi_chieu_den
 
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta
 
 import pandas as pd
 import xlsxwriter
@@ -93,7 +94,7 @@ def _viet_sheet(workbook, worksheet, df: pd.DataFrame, header_color: str):
         worksheet.write_row(row_idx, 0, row, fmt_cell)
 
 
-def _viet_tong_ket(workbook, ws, session_id,
+def _viet_tong_ket(workbook, ws, session_id, ngay_doi_chieu_str,
                    n_di_khop,      s_di_khop,
                    n_npo_di_thua,  s_npo_di_thua,
                    n_mis_di_thua,  s_mis_di_thua,
@@ -115,7 +116,7 @@ def _viet_tong_ket(workbook, ws, session_id,
     ws.set_column(2, 2, 22)
 
     data = [
-        ('Ngay doi chieu',           config.NGAY_DOI_CHIEU, ''),
+        ('Ngay doi chieu',           ngay_doi_chieu_str,    ''),
         ('Session',                  session_id,             ''),
         ('',                         '',                     ''),
         ('=== CHIEU DI ===',         '',                     ''),
@@ -143,6 +144,23 @@ def _viet_tong_ket(workbook, ws, session_id,
 
 
 # ─── Tim file ─────────────────────────────────────────────────────
+
+def _tim_ngay_tu_pdf(input_dir: str) -> str:
+    """
+    Doc ten file PDF de suy ra ngay doi chieu.
+    ACH_20260612_VBAAVNVN_NRT_15882_... -> ngay T+1 = 20260612 -> T = 11/06/2026.
+    """
+    import re as _re
+    from datetime import timedelta as _td
+    for root, _, files in os.walk(os.path.abspath(input_dir)):
+        for f in files:
+            if f.endswith('.pdf'):
+                m = _re.search(r'_(\d{8})_', f)
+                if m:
+                    d = datetime.strptime(m.group(1), '%Y%m%d') - _td(days=1)
+                    return d.strftime('%d/%m/%Y')
+    return None
+
 
 def _tim_file(input_dir: str, pattern: str) -> list:
     """Tim file theo pattern, tim de quy qua tat ca subfolder (dung abs path)."""
@@ -176,6 +194,8 @@ def xuat_excel(output_path: str, session_id: str,
 
     output_dir  = os.path.dirname(os.path.abspath(output_path))
     ngay_str    = os.path.basename(output_path).replace('doi_chieu_', '').replace('.xlsx', '')
+    # Chuyen YYYYMMDD -> dd/mm/yyyy de hien thi trong TONG_KET
+    ngay_display = datetime.strptime(ngay_str, '%Y%m%d').strftime('%d/%m/%Y')
     df_gw_clean = df_gw_raw.drop(columns=['KEY_GW'], errors='ignore') if df_gw_raw is not None else None
 
     sheets = [
@@ -215,7 +235,7 @@ def xuat_excel(output_path: str, session_id: str,
         ws.set_tab_color(color)
         if sheet_name == 'TONG_KET':
             _viet_tong_ket(
-                workbook, ws, session_id,
+                workbook, ws, session_id, ngay_display,
                 len(df_mis_di_khop)  if df_mis_di_khop  is not None else 0,
                 _tong_tien(df_mis_di_khop,   'SO_TIEN'),
                 len(df_npo_di_thua)  if df_npo_di_thua  is not None else 0,
@@ -253,8 +273,6 @@ def main_from_dir(input_dir: str, output_dir: str,
     Tra ve: duong dan file output .xlsx
     Thread-safe: ngay doi chieu tinh local, KHONG sua config module-level.
     """
-    from datetime import datetime, timedelta
-
     def log(msg):
         print(msg)
         if log_callback:
@@ -265,8 +283,15 @@ def main_from_dir(input_dir: str, output_dir: str,
         ngay_dt      = datetime.strptime(ngay.strip(), '%d/%m/%Y')
         ngay_str_cfg = ngay.strip()
     else:
-        ngay_dt      = config.NGAY_DT
-        ngay_str_cfg = config.NGAY_DOI_CHIEU
+        # Tu dong phat hien tu ten file PDF (ACH_YYYYMMDD_... -> ngay T-1)
+        auto_ngay = _tim_ngay_tu_pdf(input_dir)
+        if auto_ngay:
+            ngay_dt      = datetime.strptime(auto_ngay, '%d/%m/%Y')
+            ngay_str_cfg = auto_ngay
+            log(f'[AUTO] Phat hien ngay doi chieu tu PDF: {ngay_str_cfg}')
+        else:
+            ngay_dt      = config.NGAY_DT
+            ngay_str_cfg = config.NGAY_DOI_CHIEU
 
     # Tinh tpay de truyen tuong minh xuong b4 (thread-safe)
     tpay_tu  = (ngay_dt - timedelta(days=1)).replace(hour=23, minute=0, second=0)

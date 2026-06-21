@@ -172,7 +172,7 @@
 </div>
 
 <script>
-  // --- Mac dinh chon ngay hom nay ---
+  // --- Gioi han ngay khong duoc chon tuong lai ---
   (function() {
     const inp = document.getElementById('ngay');
     const today = new Date();
@@ -180,8 +180,10 @@
     const ymd = today.getFullYear() + '-'
       + String(today.getMonth()+1).padStart(2,'0') + '-'
       + String(today.getDate()).padStart(2,'0');
-    inp.value = ymd;
+    // KHONG tu dien ngay hom nay — de trong de server tu dong phat hien tu ten file PDF
     inp.max = ymd;  // khong cho chon tuong lai
+    document.getElementById('ngay-hint').textContent =
+      'De trong → tu dong phat hien tu file PDF. Hoac tu nhap neu can ghi de.';
   })();
 
   // --- SocketIO ---
