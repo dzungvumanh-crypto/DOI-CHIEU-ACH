@@ -86,6 +86,9 @@ def xu_ly_mis_di(zip_paths: List[str], dict_gw_count: Dict[str, int], session_id
     _tpay_tu  = tpay_tu  if tpay_tu  is not None else config.TPAY_TU
     _tpay_den = tpay_den if tpay_den is not None else config.TPAY_DEN
 
+    _log = log_callback or print
+    _log('[B4] Doc MIS_DI tu 2 ZIP...')
+
     # A1: doc 2 ZIP song song thay vi tuan tu
     with ThreadPoolExecutor(max_workers=2) as ex:
         futures = [ex.submit(_doc_zip, p) for p in zip_paths]
@@ -153,7 +156,6 @@ def xu_ly_mis_di(zip_paths: List[str], dict_gw_count: Dict[str, int], session_id
     df_timeout      = df_mis_di.loc[timeout_idx].copy()
     df_mis_di_final = df_mis_di[~df_mis_di.index.isin(timeout_idx)].copy()
 
-    _log = log_callback or print
     _log(
         f'[B4] MIS_DI → tong truoc timeout: {len(df_mis_di):,} | '
         f'SCNL: {len(df_scnl):,} | TXRT: {len(df_txrt):,} | TPAY: {len(df_tpay):,} | '

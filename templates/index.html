@@ -206,7 +206,8 @@
     { marker: '[B2]',            pct: 32, label: 'B2: Xu ly GL02 (NPO)...' },
     { marker: '[B3]',            pct: 40, label: 'B3: Xu ly GW...' },
     { marker: '[B6]',            pct: 48, label: 'B6: Xu ly MIS_DEN...' },
-    { marker: '[B4]',            pct: 66, label: 'B4: Xu ly MIS_DI...' },
+    { marker: '[B4] Doc',        pct: 55, label: 'B4: Doc MIS_DI (giai doan dai nhat)...' },
+    { marker: '[B4] MIS_DI',    pct: 68, label: 'B4: Hoan thanh MIS_DI...' },
     { marker: '[B5]',            pct: 74, label: 'B5: Doi chieu DI...' },
     { marker: '[B7]',            pct: 78, label: 'B7: Doi chieu DEN...' },
     { marker: '[EXCEL] (1/',     pct: 80, label: 'Ghi ket qua...' },
@@ -220,12 +221,14 @@
     progressBar.style.width = pct + '%';
     if (label) stageText.textContent = label;
     if (pct >= 100) progressBar.style.background = '#059669';
+    currentPct = pct;
   }
 
   function updateProgress(msg) {
     for (const s of STAGE_MAP) {
       if (msg.includes(s.marker)) {
-        setProgress(s.pct, s.label);
+        // Chi tien ve phia truoc, khong giat lui (quan trong khi cac stage chay song song)
+        if (s.pct >= currentPct) setProgress(s.pct, s.label);
         break;
       }
     }
@@ -233,6 +236,7 @@
 
   let currentJobId = '';
   let pendingFiles = [];   // files chon/drop, cho den khi bam Xu ly
+  let currentPct   = 0;   // giu lai % hien tai de tranh progress giat lui
 
   function addLog(msg, cls) {
     const line = document.createElement('div');
@@ -359,6 +363,7 @@
     progressWrap.classList.remove('visible');
     progressBar.style.width = '0%';
     progressBar.style.background = '#3b82f6';
+    currentPct = 0;
     stageText.textContent = 'Khoi dong...';
     dlSection.classList.remove('visible');
     dlButtons.innerHTML = '';

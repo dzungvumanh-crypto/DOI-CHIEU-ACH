@@ -24,6 +24,7 @@ from modules.b4_xu_ly_mis_di  import xu_ly_mis_di
 from modules.b5_doi_chieu_di  import doi_chieu_di
 from modules.b6_xu_ly_mis_den import xu_ly_mis_den
 from modules.b7_doi_chieu_den import doi_chieu_den
+from modules.b8_phan_tich    import phan_tich
 
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
@@ -71,11 +72,56 @@ def _tong_tien(df: pd.DataFrame, col: str) -> int:
     return int(pd.to_numeric(df[col], errors='coerce').fillna(0).sum())
 
 
+def _tao_cap_cn_tien(mis_di_final, df_timeout, dict_gw_count):
+    """
+    So sanh count CN+TIEN giua TAT CA MIS (SCNL+TXRT+TPAY) va GW.
+    Logic giong manual pivot: COUNT_MIS - COUNT_GW, chi hien cap CHENH_LECH > 0.
+    Quan trong: phai tinh toan TAT CA giao dich MIS (khong chi TPAY) de bat dung
+    truong hop SCNL da dung het slot GW khien TPAY thanh timeout.
+    Vi du: CN=3617 SO_TIEN=35000: MIS=2 (1 SCNL + 1 TPAY timeout), GW=1 -> CHENH_LECH=1.
+    """
+    cn_col = 'CN tiền Hub'
+    frames = []
+    if mis_di_final is not None and len(mis_di_final) > 0:
+        frames.append(mis_di_final)
+    if df_timeout is not None and len(df_timeout) > 0:
+        frames.append(df_timeout)
+
+    if not frames:
+        return pd.DataFrame(columns=['CHI_NHANH', 'SO_TIEN', 'COUNT_MIS', 'COUNT_GW', 'CHENH_LECH', 'SO_TIMEOUT'])
+
+    df_all = pd.concat(frames, ignore_index=True)
+
+    if cn_col not in df_all.columns:
+        return pd.DataFrame(columns=['CHI_NHANH', 'SO_TIEN', 'COUNT_MIS', 'COUNT_GW', 'CHENH_LECH', 'SO_TIMEOUT'])
+
+    cnt = df_all.groupby(cn_col, sort=False).size().rename('COUNT_MIS').reset_index()
+    cnt['COUNT_GW']   = cnt[cn_col].map(dict_gw_count).fillna(0).astype(int)
+    cnt['CHENH_LECH'] = cnt['COUNT_MIS'] - cnt['COUNT_GW']
+
+    if df_timeout is not None and len(df_timeout) > 0 and cn_col in df_timeout.columns:
+        to_cnt = df_timeout.groupby(cn_col, sort=False).size().rename('SO_TIMEOUT')
+        cnt = cnt.merge(to_cnt, on=cn_col, how='left')
+        cnt['SO_TIMEOUT'] = cnt['SO_TIMEOUT'].fillna(0).astype(int)
+    else:
+        cnt['SO_TIMEOUT'] = 0
+
+    ref = df_all.drop_duplicates(subset=[cn_col])
+    cnt['CHI_NHANH'] = cnt[cn_col].map(ref.set_index(cn_col)['CHI_NHANH'].to_dict())
+    cnt['SO_TIEN']   = cnt[cn_col].map(ref.set_index(cn_col)['SO_TIEN'].to_dict())
+
+    result = cnt[cnt['CHENH_LECH'] > 0][
+        ['CHI_NHANH', 'SO_TIEN', 'COUNT_MIS', 'COUNT_GW', 'CHENH_LECH', 'SO_TIMEOUT']
+    ].copy()
+    return result.sort_values('CHENH_LECH', ascending=False).reset_index(drop=True)
+
+
 # ─── Mau sac ──────────────────────────────────────────────────────
 _XANH_LA  = '#C6EFCE'
 _DO       = '#FFC7CE'
 _CAM      = '#FFEB9C'
 _XANH_LAM = '#DDEBF7'
+_XANH_NHAT = '#E2EFDA'
 
 
 def _viet_sheet(workbook, worksheet, df: pd.DataFrame, header_color: str):
@@ -86,12 +132,19 @@ def _viet_sheet(workbook, worksheet, df: pd.DataFrame, header_color: str):
     fmt_header = workbook.add_format({'bold': True, 'bg_color': header_color, 'border': 1, 'font_size': 10})
     fmt_cell   = workbook.add_format({'font_size': 10, 'border': 1})
 
+    # Chuyen cot datetime -> string truoc khi ghi de tranh hien thi so serial Excel
+    df = df.copy()
+    for col in df.columns:
+        if pd.api.types.is_datetime64_any_dtype(df[col]):
+            df[col] = df[col].dt.strftime('%d/%m/%Y %H:%M:%S')
+
     for col_idx, col_name in enumerate(df.columns):
         worksheet.write(0, col_idx, str(col_name), fmt_header)
 
     rows = df.fillna('').values.tolist()
     for row_idx, row in enumerate(rows, start=1):
         worksheet.write_row(row_idx, 0, row, fmt_cell)
+
 
 
 def _viet_tong_ket(workbook, ws, session_id, ngay_doi_chieu_str,
@@ -115,6 +168,11 @@ def _viet_tong_ket(workbook, ws, session_id, ngay_doi_chieu_str,
     ws.set_column(1, 1, 16)
     ws.set_column(2, 2, 22)
 
+    n_npo_di  = n_di_khop  + n_npo_di_thua
+    n_npo_den = n_den_khop + n_npo_den_thua
+    ty_le_di  = round(n_di_khop  / n_npo_di  * 100, 2) if n_npo_di  > 0 else 0.0
+    ty_le_den = round(n_den_khop / n_npo_den * 100, 2) if n_npo_den > 0 else 0.0
+
     data = [
         ('Ngay doi chieu',           ngay_doi_chieu_str,    ''),
         ('Session',                  session_id,             ''),
@@ -124,11 +182,13 @@ def _viet_tong_ket(workbook, ws, session_id, ngay_doi_chieu_str,
         ('NPO_DI thua',              n_npo_di_thua, s_npo_di_thua),
         ('MIS_DI thua',              n_mis_di_thua, s_mis_di_thua),
         ('Timeout khong kenh',       n_timeout,     s_timeout),
+        ('Ty le khop DI (%)',        ty_le_di,      f'{n_di_khop:,} / {n_npo_di:,}'),
         ('',                         '',             ''),
         ('=== CHIEU DEN ===',        '',             ''),
         ('So giao dich khop (MIS)',  n_den_khop,    s_den_khop),
         ('NPO_DEN thua',             n_npo_den_thua, s_npo_den_thua),
         ('MIS_DEN thua',             n_mis_den_thua, s_mis_den_thua),
+        ('Ty le khop DEN (%)',       ty_le_den,     f'{n_den_khop:,} / {n_npo_den:,}'),
     ]
 
     for row_idx, (label, val, tien) in enumerate(data, start=1):
@@ -190,7 +250,9 @@ def _tim_gw_xlsx(input_dir: str) -> str:
 def xuat_excel(output_path: str, session_id: str,
                df_mis_di_khop, df_npo_di_thua, df_mis_di_thua,
                df_timeout, df_mis_den_khop, df_npo_den_thua,
-               df_mis_den_thua, df_gw_raw, log_callback=None):
+               df_mis_den_thua, df_gw_raw,
+               df_cap_cn_tien=None, df_phan_tich=None,
+               log_callback=None):
 
     output_dir  = os.path.dirname(os.path.abspath(output_path))
     ngay_str    = os.path.basename(output_path).replace('doi_chieu_', '').replace('.xlsx', '')
@@ -200,10 +262,12 @@ def xuat_excel(output_path: str, session_id: str,
 
     sheets = [
         ('TONG_KET',           None,                                                     '#FFFFFF'),
+        ('PHAN_TICH',          df_phan_tich,                                             _XANH_NHAT),
         ('MIS_DI_KHOP',        _clean(df_mis_di_khop,  _COLS_MIS_DI, 'MIS_DI_KHOP'),   _XANH_LA),
         ('NPO_DI_THUA',        _clean(df_npo_di_thua,  _COLS_NPO,    'NPO_DI_THUA'),   _DO),
         ('MIS_DI_THUA',        _clean(df_mis_di_thua,  _COLS_MIS_DI, 'MIS_DI_THUA'),   _DO),
         ('TIMEOUT_KHONG_KENH', _clean(df_timeout,       _COLS_MIS_DI, 'TIMEOUT'),        _CAM),
+        ('CAP_CN_TIEN',        df_cap_cn_tien,                                           _CAM),
         ('MIS_DEN_KHOP',       _clean(df_mis_den_khop, _COLS_MIS_DEN,'MIS_DEN_KHOP'),  _XANH_LA),
         ('NPO_DEN_THUA',       _clean(df_npo_den_thua, _COLS_NPO,    'NPO_DEN_THUA'),  _DO),
         ('MIS_DEN_THUA',       _clean(df_mis_den_thua, _COLS_MIS_DEN,'MIS_DEN_THUA'),  _DO),
@@ -345,6 +409,9 @@ def main_from_dir(input_dir: str, output_dir: str,
         tpay_tu=tpay_tu, tpay_den=tpay_den, log_callback=log_callback
     )
 
+    # CAP_CN_TIEN: so sanh count MIS_TPAY vs GW per CN+TIEN (thay pivot thu cong)
+    df_cap_cn_tien = _tao_cap_cn_tien(mis_di_final, df_timeout, dict_gw_count)
+
     # Phase 2: B5 + B7 song song
     with ThreadPoolExecutor(max_workers=2) as ex:
         f_di  = ex.submit(doi_chieu_di,  npo_di,  mis_di_final, log_callback)
@@ -353,13 +420,23 @@ def main_from_dir(input_dir: str, output_dir: str,
         df_mis_di_khop, df_npo_di_thua, df_mis_di_thua    = f_di.result()
         df_mis_den_khop, df_npo_den_thua, df_mis_den_thua = f_den.result()
 
+    # PHAN_TICH: dashboard chat luong doi chieu (thay phan tich thu cong)
+    df_phan_tich = phan_tich(
+        df_npo_di_thua, df_mis_di_thua,
+        df_npo_den_thua, df_mis_den_thua,
+        len(df_mis_di_khop), len(df_mis_den_khop), df_timeout,
+    )
+
     output_path = os.path.join(output_dir, f'doi_chieu_{ngay_dt.strftime("%Y%m%d")}.xlsx')
     xuat_excel(
         output_path, session_id,
         df_mis_di_khop, df_npo_di_thua, df_mis_di_thua,
         df_timeout,
         df_mis_den_khop, df_npo_den_thua, df_mis_den_thua,
-        df_gw_raw, log_callback=log_callback,
+        df_gw_raw,
+        df_cap_cn_tien=df_cap_cn_tien,
+        df_phan_tich=df_phan_tich,
+        log_callback=log_callback,
     )
     log(f'Hoan thanh: {output_path}')
     return output_path
