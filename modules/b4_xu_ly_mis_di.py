@@ -116,8 +116,8 @@ def xu_ly_mis_di(zip_paths: List[str], dict_gw_count: Dict[str, int], session_id
     mask_scnl = df['TRANG_THAI_LENH'] == 'SCNL'
     df_scnl = df[mask_scnl & (df['SESSION'] == sid)].copy()
 
-    # TXRT: lay toan bo (khong loc session)
-    df_txrt = df[df['TRANG_THAI_LENH'] == 'TXRT'].copy()
+    # TXRT: chi lay trong session hien tai (tranh lay TXRT tu session cu)
+    df_txrt = df[(df['TRANG_THAI_LENH'] == 'TXRT') & (df['SESSION'] == sid)].copy()
 
     # TPAY: SESSION = session_id HOAC (SESSION null VA NGAY_KENH_TRA trong khoang)
     mask_tpay = df['TRANG_THAI_LENH'] == 'TPAY'
