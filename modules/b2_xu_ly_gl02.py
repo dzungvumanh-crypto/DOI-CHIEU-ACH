@@ -15,31 +15,46 @@ def _so_trace(ref: str):
     return m.group(1) if m else None
 
 
+_LOCAC_TARGET = '502003'
+
+
 def _doc_zip(zip_path: str) -> pd.DataFrame:
+    """Doc ZIP co nhieu CSV, chi lay file co LOCAC=502003.
+    Dung z.open()+chunksize de tranh OOM khi co file lon LOCAC khac."""
     frames = []
     with pyzipper.AESZipFile(zip_path, 'r') as z:
         z.setpassword(ZIP_PASSWORD)
-        for name in z.namelist():
-            if name.lower().endswith('.csv'):
-                raw = z.read(name)
-                for enc in ('utf-8-sig', 'cp1252'):
-                    try:
-                        df = pd.read_csv(
-                            io.BytesIO(raw),
-                            dtype=str,
-                            usecols=lambda c: c.strip() in _COLS_NPO,
-                            encoding=enc,
-                            low_memory=False,
-                        )
-                        # Xoa khoang trang thua trong ten cot (vi du: 'CRTDTM ')
-                        df.columns = [c.strip() for c in df.columns]
-                        missing = [c for c in _COLS_REQUIRED if c not in df.columns]
-                        if missing:
-                            raise ValueError(f'Thieu cot: {missing}')
-                        frames.append(df)
-                        break
-                    except UnicodeDecodeError:
-                        continue
+        for name in sorted(z.namelist()):
+            if not name.lower().endswith('.csv'):
+                continue
+            for enc in ('utf-8-sig', 'cp1252'):
+                try:
+                    with z.open(name) as raw_f:
+                        wrapped = io.TextIOWrapper(raw_f, encoding=enc, errors='strict')
+                        file_frames = []
+                        skip_file   = False
+                        for i, chunk in enumerate(
+                            pd.read_csv(
+                                wrapped, dtype=str,
+                                usecols=lambda c: c.strip() in _COLS_NPO,
+                                chunksize=50_000, low_memory=False,
+                            )
+                        ):
+                            chunk.columns = [c.strip() for c in chunk.columns]
+                            if i == 0:
+                                missing = [c for c in _COLS_REQUIRED if c not in chunk.columns]
+                                if missing:
+                                    raise ValueError(f'Thieu cot: {missing}')
+                                # Kiem tra LOCAC cua file qua dong dau tien
+                                if 'LOCAC' in chunk.columns and chunk['LOCAC'].iloc[0].strip() != _LOCAC_TARGET:
+                                    skip_file = True
+                                    break
+                            file_frames.append(chunk)
+                        if not skip_file and file_frames:
+                            frames.append(pd.concat(file_frames, ignore_index=True))
+                    break  # encoding thanh cong
+                except UnicodeDecodeError:
+                    continue
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=_COLS_NPO)
 
 
@@ -53,13 +68,15 @@ def xu_ly_gl02(zip_path: str, log_callback=None):
     df['CRAMOUNT'] = pd.to_numeric(df['CRAMOUNT'], errors='coerce').fillna(0).astype('int64')
     df['DRAMOUNT'] = pd.to_numeric(df['DRAMOUNT'], errors='coerce').fillna(0).astype('int64')
 
+    # Loc theo LOCAC=502003: chi lay dong phat sinh ACH (MSSR08 export toan bo branch)
+    df['LOCAC'] = df['LOCAC'].astype(str).str.strip()
+    df = df[df['LOCAC'] == '502003'].reset_index(drop=True)
+
     # Tao SO_TRACE
     df['SO_TRACE'] = df['REFERENCE'].map(_so_trace)
-
-    # Tao KEY (SO_TRACE co the la None → se khong khop voi MIS → tu dong ra THUA)
     df['_trace_str'] = df['SO_TRACE'].fillna('')
 
-    # NPO_DI: CRAMOUNT != 0
+    # NPO_DI: LOCAC=502003 AND CRAMOUNT != 0 (giao dich di - credit)
     npo_di = df[df['CRAMOUNT'] != 0].copy()
     npo_di['KEY_DI'] = (
         npo_di['TRBRCD'].str.strip()
@@ -67,10 +84,8 @@ def xu_ly_gl02(zip_path: str, log_callback=None):
         + npo_di['CRAMOUNT'].astype(str)
     )
 
-    # NPO_DEN: DRAMOUNT != 0
-    # KEY_DEN khong co TRBRCD vi GL02 luon post vao branch 5227 (clearing),
-    # trong khi MIS_DEN dung CHI_NHANH thuc cua khach hang
-    npo_den = df[df['DRAMOUNT'] != 0].copy()
+    # NPO_DEN: LOCAC=502003 AND CRAMOUNT == 0 (giao dich den - debit, DRAMOUNT != 0)
+    npo_den = df[df['CRAMOUNT'] == 0].copy()
     npo_den['KEY_DEN'] = (
         npo_den['_trace_str']
         + npo_den['DRAMOUNT'].astype(str)
