@@ -33,6 +33,11 @@ def xu_ly_gw(xlsx_path: str, session_id: str, log_callback=None):
     frames = [_doc_mot_sheet(xl, s) for s in xl.sheet_names]
     df = pd.concat(frames, ignore_index=True)
 
+    # Loai ban ghi trung theo MSGREF: xay ra khi GW file co sheet phu
+    # (VD: "di GW 12.06") la ban sao loc cua sheet chinh (Sheet 1)
+    if 'MSGREF' in df.columns:
+        df = df.drop_duplicates(subset=['MSGREF'])
+
     # Loc session
     df = df[df['SessionId'].astype(str).str.strip() == str(session_id)].copy()
 
