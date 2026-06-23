@@ -1,0 +1,352 @@
+============================================================
+   HƯỚNG DẪN CÀI ĐẶT VÀ SỬ DỤNG
+   CHƯƠNG TRÌNH ĐỐI CHIẾU ACH
+   Phiên bản: 2026-06  |  Nền tảng: Windows 10/11 x64
+============================================================
+
+
+MỤC LỤC
+--------
+  A. Yêu cầu hệ thống
+  B. Chuẩn bị gói cài đặt (máy CÓ Internet)
+  C. Cài đặt lần đầu (máy KHÔNG có Internet)
+  D. Sử dụng hàng ngày
+  E. Chuẩn bị dữ liệu đầu vào
+  F. Đọc kết quả đầu ra
+  G. Xử lý sự cố thường gặp
+
+
+════════════════════════════════════════════════════════════
+  A. YÊU CẦU HỆ THỐNG
+════════════════════════════════════════════════════════════
+
+  - Hệ điều hành : Windows 10 hoặc Windows 11 (64-bit)
+  - RAM           : Tối thiểu 4 GB (khuyến nghị 8 GB)
+  - Ổ cứng trống : Tối thiểu 1 GB cho chương trình + dữ liệu
+  - Trình duyệt   : Chrome, Edge, Firefox (bất kỳ phiên bản hiện đại)
+  - Python        : KHÔNG cần cài trước — chương trình tự đóng gói
+
+  LƯU Ý: Chương trình hoạt động hoàn toàn NGOẠI TUYẾN sau khi
+  cài đặt. Không cần kết nối Internet khi sử dụng hàng ngày.
+
+
+════════════════════════════════════════════════════════════
+  B. CHUẨN BỊ GÓI CÀI ĐẶT
+  (Thực hiện trên máy CÓ kết nối Internet — chỉ 1 lần)
+════════════════════════════════════════════════════════════
+
+  Bước này tải Python và tất cả thư viện về máy, sau đó copy
+  toàn bộ sang máy đích qua USB hoặc mạng nội bộ.
+
+  Thực hiện:
+  ┌─────────────────────────────────────────────────────┐
+  │  Double-click: CHUAN_BI_CAN_INTERNET.bat            │
+  └─────────────────────────────────────────────────────┘
+
+  Quá trình tự động:
+    1. Kiểm tra kết nối Internet
+    2. Tải Python 3.12 (~12 MB)
+    3. Tải 29 thư viện Python (~120 MB) — có thể mất 3-10 phút
+    4. Tạo thư mục _setup\ chứa toàn bộ gói
+
+  Khi hoàn tất sẽ hiển thị: "HOÀN TẤT! Đã chuẩn bị XX gói"
+
+  Tiếp theo:
+    → Copy TOÀN BỘ thư mục chương trình (bao gồm thư mục _setup\)
+      sang máy đích qua USB hoặc chia sẻ mạng nội bộ.
+
+  CÂY THƯ MỤC CẦN COPY:
+    DOI-CHIEU-ACH\
+    ├── _setup\               ← BẮT BUỘC (gói cài đặt offline)
+    │   ├── python-embed.zip
+    │   ├── get-pip.py
+    │   └── packages\         ← 29 file .whl
+    ├── modules\
+    ├── templates\
+    ├── static\
+    ├── main.py
+    ├── web_app.py
+    ├── config.py
+    ├── requirements.txt
+    ├── INSTALL.bat
+    ├── START_WEB.bat
+    ├── START.bat
+    └── HUONG_DAN_CAI_DAT.txt
+
+
+════════════════════════════════════════════════════════════
+  C. CÀI ĐẶT LẦN ĐẦU
+  (Thực hiện trên máy đích — chỉ 1 lần duy nhất)
+════════════════════════════════════════════════════════════
+
+  Điều kiện: Đã copy toàn bộ thư mục từ bước B sang máy này.
+
+  Thực hiện:
+  ┌─────────────────────────────────────────────────────┐
+  │  Double-click: INSTALL.bat                          │
+  └─────────────────────────────────────────────────────┘
+
+  Quá trình tự động (không cần Internet):
+    [1/4] Giải nén Python 3.12 vào thư mục _python\
+    [2/4] Kích hoạt chế độ thư viện (site-packages)
+    [3/4] Cài pip (trình quản lý gói)
+    [4/4] Cài 29 thư viện từ _setup\packages\
+
+  Thời gian: khoảng 2-5 phút
+
+  Khi hoàn tất sẽ hiển thị: "CÀI ĐẶT THÀNH CÔNG!"
+
+  → Sau bước này, chỉ cần dùng START_WEB.bat hàng ngày.
+    Không cần chạy INSTALL.bat lại (trừ khi cài lại toàn bộ).
+
+
+════════════════════════════════════════════════════════════
+  D. SỬ DỤNG HÀNG NGÀY
+════════════════════════════════════════════════════════════
+
+  ──────────────────────────────────────────────────────
+  D1. KHỞI ĐỘNG CHƯƠNG TRÌNH (Giao diện Web)
+  ──────────────────────────────────────────────────────
+
+  ┌─────────────────────────────────────────────────────┐
+  │  Double-click: START_WEB.bat                        │
+  └─────────────────────────────────────────────────────┘
+
+  Chương trình tự động:
+    1. Khởi động web server trên cổng 8080
+    2. Mở trình duyệt vào địa chỉ: http://localhost:8080
+
+  GIỮ CỬA SỔ ĐEN MỞ trong suốt quá trình sử dụng.
+  Để tắt chương trình: đóng cửa sổ đen hoặc nhấn Ctrl+C.
+
+  Nếu trình duyệt không tự mở:
+    → Mở thủ công và truy cập: http://localhost:8080
+
+  ──────────────────────────────────────────────────────
+  D2. THỰC HIỆN ĐỐI CHIẾU TRÊN WEB
+  ──────────────────────────────────────────────────────
+
+  Bước 1 — Chọn ngày đối chiếu:
+    Nhập ngày cần đối chiếu (định dạng dd/mm/yyyy)
+
+  Bước 2 — Upload file dữ liệu:
+    Kéo thả hoặc chọn các file sau:
+      • File PDF    : ACH_xxx_NRT_xxx_xxx.pdf
+      • File GW     : *.xlsx (file Gateway)
+      • File GL02   : GL02_*.zip (từ IPCAS/NPO)
+      • File MIS DI : *_DI_*.zip (ngày T và T-1)
+      • File MIS DEN: *_DEN_*.zip (ngày T và T-1)
+
+  Bước 3 — Nhấn "BẮT ĐẦU ĐỐI CHIẾU"
+    Chờ thanh tiến trình hoàn tất (~30 giây đến vài phút
+    tùy kích thước dữ liệu)
+
+  Bước 4 — Tải kết quả:
+    Nhấn nút tải xuống để lưu file Excel kết quả.
+
+
+════════════════════════════════════════════════════════════
+  E. CHUẨN BỊ DỮ LIỆU ĐẦU VÀO
+════════════════════════════════════════════════════════════
+
+  ──────────────────────────────────────────────────────
+  E1. FILE PDF (Session ACH)
+  ──────────────────────────────────────────────────────
+
+  Tên file mẫu: ACH_YYYYMMDD_NRT_HHMMSS_HHMMSS.pdf
+  Nguồn       : Hệ thống ACH
+  Mục đích    : Xác định mã session và ngày đối chiếu
+  Số lượng    : 1 file cho ngày đối chiếu
+
+  ──────────────────────────────────────────────────────
+  E2. FILE GW (Gateway)
+  ──────────────────────────────────────────────────────
+
+  Tên file mẫu: *.xlsx (Excel có sheet "Sheet 1" hoặc "GW")
+  Nguồn       : Hệ thống Gateway
+  Nội dung    : Danh sách lệnh đã qua kênh
+  Số lượng    : 1 file
+
+  Cột quan trọng: MSGREF, BRCD, STTLMAMT, DBCR
+
+  ──────────────────────────────────────────────────────
+  E3. FILE GL02 (NPO/IPCAS)
+  ──────────────────────────────────────────────────────
+
+  Tên file mẫu: GL02_YYYYMMDD.zip
+  Nguồn       : Hệ thống NPO/IPCAS
+  Nội dung    : Giao dịch hạch toán sổ cái (LOCAC 502003)
+  Số lượng    : 1 file ZIP (chứa file CSV bên trong)
+
+  Cột quan trọng: TRBRCD, REFERENCE, CRAMOUNT, DRAMOUNT,
+                  LOCAC, CUSTOMER, SESSION
+
+  LƯU Ý: Chương trình tự lọc LOCAC=502003 và
+  CUSTOMER=1000-003526275. Không cần lọc thủ công.
+
+  ──────────────────────────────────────────────────────
+  E4. FILE MIS DI (Hub — chiều đi)
+  ──────────────────────────────────────────────────────
+
+  Tên file mẫu: *_DI_YYYYMMDD.zip hoặc *_DI_T-1_YYYYMMDD.zip
+  Nguồn       : Hệ thống MIS Hub
+  Nội dung    : Lệnh chuyển tiền chiều đi
+  Số lượng    : 2 file (ngày T và ngày T-1)
+
+  Cột quan trọng: CHI_NHANH, TRACE, SO_TIEN, TRANG_THAI_LENH
+  Trạng thái  : SCNL (đã TT) | TPAY (đang xử lý) | TXRT (hoàn trả)
+
+  ──────────────────────────────────────────────────────
+  E5. FILE MIS DEN (Hub — chiều đến)
+  ──────────────────────────────────────────────────────
+
+  Tên file mẫu: *_DEN_YYYYMMDD.zip hoặc *_DEN_T-1_YYYYMMDD.zip
+  Nguồn       : Hệ thống MIS Hub
+  Nội dung    : Lệnh nhận tiền chiều đến
+  Số lượng    : 2 file (ngày T và ngày T-1)
+
+  Cột quan trọng: TRACE, SO_TIEN, CHI_NHANH
+
+
+════════════════════════════════════════════════════════════
+  F. ĐỌC KẾT QUẢ ĐẦU RA
+════════════════════════════════════════════════════════════
+
+  File kết quả: doi_chieu_YYYYMMDD.xlsx (file Excel)
+
+  ──────────────────────────────────────────────────────
+  SHEET TONG_KET — Tóm tắt toàn bộ đối chiếu
+  ──────────────────────────────────────────────────────
+
+  Chỉ số                      Ý nghĩa
+  ─────────────────────────── ─────────────────────────
+  Số GD khớp MIS DI           GL02 ↔ MIS DI khớp hoàn toàn
+  NPO DI thừa                 Có trong GL02, không có trong MIS
+  MIS DI thừa                 Có trong MIS, không có trong GL02
+  Timeout không đi kênh       TPAY không có slot trong GW
+  Tỷ lệ khớp DI (%)           = Khớp / (Khớp + NPO_DI_thừa) × 100
+  Số GD khớp MIS DEN          GL02 ↔ MIS DEN khớp hoàn toàn
+  NPO DEN thừa                Có trong GL02, không có trong MIS DEN
+  MIS DEN thừa                Có trong MIS DEN, không có trong GL02
+  Tỷ lệ khớp DEN (%)          = Khớp / (Khớp + NPO_DEN_thừa) × 100
+
+  ──────────────────────────────────────────────────────
+  SHEET PHAN_TICH — Phân tích chất lượng tự động
+  ──────────────────────────────────────────────────────
+
+  • KPI tỷ lệ khớp NPO và MIS (cả DI và DEN)
+  • Phân loại MIS_DI thừa theo trạng thái (SCNL/TPAY/TXRT)
+  • Top chi nhánh có nhiều giao dịch thừa nhất
+  • Phân tích MIS_DEN thừa
+
+  ──────────────────────────────────────────────────────
+  SHEET CAP_CN_TIEN — Cặp (Chi nhánh, Số tiền) lệch
+  ──────────────────────────────────────────────────────
+
+  Liệt kê các cặp (CHI_NHANH, SO_TIEN) có số lệnh MIS
+  nhiều hơn số slot trong GW → ứng viên timeout cần kiểm tra.
+
+  Cột: CHI_NHANH | SO_TIEN | COUNT_MIS | COUNT_GW |
+        CHENH_LECH | SO_TIMEOUT
+
+  ──────────────────────────────────────────────────────
+  SHEET NPO_DI_THUA / MIS_DI_THUA
+  ──────────────────────────────────────────────────────
+
+  Danh sách chi tiết từng giao dịch thừa chiều đi.
+  Tra cứu theo: REFERENCE (KEY_DI) hoặc TRACE (KEY_HUB).
+
+  ──────────────────────────────────────────────────────
+  SHEET NPO_DEN_THUA / MIS_DEN_THUA
+  ──────────────────────────────────────────────────────
+
+  Danh sách chi tiết từng giao dịch thừa chiều đến.
+
+  ──────────────────────────────────────────────────────
+  SHEET TIMEOUT_KHONG_KENH
+  ──────────────────────────────────────────────────────
+
+  Danh sách lệnh TPAY không có slot GW tương ứng.
+  Đây là các lệnh "timeout không đi kênh" cần xử lý.
+
+  ──────────────────────────────────────────────────────
+  LƯU Ý VỀ FILE LỚN
+  ──────────────────────────────────────────────────────
+
+  Sheet có > 50,000 dòng sẽ được tách thành file CSV riêng
+  (đính kèm trong cùng thư mục kết quả) và Excel chỉ hiển
+  thị thông báo hướng dẫn mở file CSV đó.
+
+
+════════════════════════════════════════════════════════════
+  G. XỬ LÝ SỰ CỐ THƯỜNG GẶP
+════════════════════════════════════════════════════════════
+
+  ──────────────────────────────────────────────────────
+  Lỗi: "Chưa có Python! Hãy chạy INSTALL.bat trước"
+  ──────────────────────────────────────────────────────
+  Nguyên nhân: Chưa cài đặt hoặc thư mục _python\ bị xóa.
+  Khắc phục  : Chạy INSTALL.bat (cần có thư mục _setup\).
+
+  ──────────────────────────────────────────────────────
+  Lỗi: "Không tìm thấy gói cài đặt _setup\"
+  ──────────────────────────────────────────────────────
+  Nguyên nhân: Thiếu thư mục _setup\ (quên copy từ bước B).
+  Khắc phục  : Copy lại _setup\ từ máy có Internet, sau đó
+               chạy lại INSTALL.bat.
+
+  ──────────────────────────────────────────────────────
+  Lỗi: "Không tìm thấy dữ liệu" khi upload file
+  ──────────────────────────────────────────────────────
+  Nguyên nhân: Tên file không đúng định dạng.
+  Khắc phục  : Kiểm tra lại tên file theo mục E. Chương
+               trình nhận dạng file theo tên và phần mở rộng.
+
+  ──────────────────────────────────────────────────────
+  Lỗi: Trình duyệt hiện "This site can't be reached"
+  ──────────────────────────────────────────────────────
+  Nguyên nhân: Web server chưa khởi động xong.
+  Khắc phục  : Đợi thêm 5-10 giây rồi làm mới trang (F5).
+               Kiểm tra cửa sổ đen vẫn đang mở.
+
+  ──────────────────────────────────────────────────────
+  Kết quả khác với đối chiếu thủ công
+  ──────────────────────────────────────────────────────
+  Kiểm tra:
+    1. Ngày đối chiếu nhập đúng chưa?
+    2. File MIS đã có đủ cả ngày T và T-1 chưa?
+    3. File PDF đúng session ACH ngày đó chưa?
+    4. File GL02 có đúng ngày không?
+
+  ──────────────────────────────────────────────────────
+  Cần cập nhật chương trình phiên bản mới
+  ──────────────────────────────────────────────────────
+    1. Copy các file .py và thư mục modules\, templates\,
+       static\ từ bản mới vào thư mục chương trình.
+    2. KHÔNG cần chạy lại INSTALL.bat (Python đã có sẵn).
+    3. Chạy START_WEB.bat như thường.
+
+
+════════════════════════════════════════════════════════════
+  TỔNG KẾT QUY TRÌNH
+════════════════════════════════════════════════════════════
+
+  LẦN ĐẦU CÀI ĐẶT (chỉ 1 lần):
+  ┌────────────────────────────────────────────────────┐
+  │  Máy CÓ Internet:                                  │
+  │    → CHUAN_BI_CAN_INTERNET.bat  (tải ~120 MB)      │
+  │    → Copy toàn bộ thư mục sang máy đích            │
+  │                                                    │
+  │  Máy KHÔNG có Internet (máy đích):                 │
+  │    → INSTALL.bat  (cài đặt offline, ~3 phút)       │
+  └────────────────────────────────────────────────────┘
+
+  HÀNG NGÀY:
+  ┌────────────────────────────────────────────────────┐
+  │    → START_WEB.bat  →  mở trình duyệt              │
+  │    → Upload file  →  Đối chiếu  →  Tải kết quả    │
+  └────────────────────────────────────────────────────┘
+
+============================================================
+  Mọi thắc mắc vui lòng liên hệ bộ phận phụ trách
+============================================================
