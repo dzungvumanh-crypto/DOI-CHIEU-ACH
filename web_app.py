@@ -3,8 +3,10 @@ web_app.py — Web UI cho DOI-CHIEU-ACH
 Chay:   python web_app.py
 Truy cap tu LAN:  http://<IP_MAY_CHU>:8080
 """
+import io
 import os
 import uuid
+import zipfile
 import threading
 
 from flask import Flask, request, jsonify, render_template, send_file
@@ -28,6 +30,9 @@ UPLOAD_DIR = os.path.abspath('./uploads')
 OUTPUT_DIR = os.path.abspath('./output')
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+# Luu danh sach file ket qua theo job_id de phuc vu /download_all
+_job_files: dict = {}
 
 
 @app.route('/')
@@ -89,6 +94,8 @@ def _run_processing(job_id: str, input_dir: str, ngay: str):
             if fname.endswith('.csv') and base.replace('doi_chieu_', '') in fname:
                 result_files.append({'name': fname, 'url': f'/download/{fname}'})
 
+        _job_files[job_id] = result_files
+
         socketio.emit('done', {'job_id': job_id, 'files': result_files})
     except Exception as e:
         import traceback
@@ -107,6 +114,32 @@ def download(filename):
                 f'Thu muc output: {OUTPUT_DIR}\n'
                 f'Cac file hien co: {files_in_dir}'), 404
     return send_file(path, as_attachment=True)
+
+
+@app.route('/download_all/<job_id>')
+def download_all(job_id):
+    files = _job_files.get(job_id)
+    if not files:
+        return 'Khong tim thay ket qua cho job nay (co the server da khoi dong lai).', 404
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for f in files:
+            path = os.path.join(OUTPUT_DIR, f['name'])
+            if os.path.exists(path):
+                zf.write(path, f['name'])
+    buf.seek(0)
+
+    # Lay ngay tu ten file xlsx de dat ten ZIP
+    xlsx_name = next((f['name'] for f in files if f['name'].endswith('.xlsx')), 'ket_qua')
+    zip_name  = xlsx_name.replace('.xlsx', '') + '_ALL.zip'
+
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name=zip_name,
+        mimetype='application/zip',
+    )
 
 
 if __name__ == '__main__':

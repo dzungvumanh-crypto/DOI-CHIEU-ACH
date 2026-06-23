@@ -94,6 +94,12 @@
   .dl-btn:hover { background: #1e40af; }
   .dl-btn.csv-btn { background: #059669; }
   .dl-btn.csv-btn:hover { background: #047857; }
+  .dl-btn.all-btn {
+    background: #7c3aed; font-size: 15px; font-weight: 600;
+    padding: 12px 24px; width: 100%; justify-content: center;
+    margin-right: 0; margin-bottom: 14px; border-radius: 9px;
+  }
+  .dl-btn.all-btn:hover { background: #6d28d9; }
 
   #reset-btn {
     margin-top: 16px; padding: 8px 18px;
@@ -265,6 +271,16 @@
     statusBar.classList.remove('visible');
     dlSection.classList.add('visible');
     dlButtons.innerHTML = '';
+
+    // Nut tai tat ca (ZIP)
+    const allBtn = document.createElement('a');
+    allBtn.className = 'dl-btn all-btn';
+    allBtn.href = '/download_all/' + d.job_id;
+    allBtn.innerHTML = '&#8681; Tai tat ca (ZIP)';
+    dlButtons.appendChild(allBtn);
+
+    // Cac nut tai tung file rieng le
+    const indiv = document.createElement('div');
     (d.files || []).forEach(f => {
       const isCSV = f.name.endsWith('.csv');
       const a = document.createElement('a');
@@ -272,8 +288,9 @@
       a.href = f.url;
       a.download = f.name;
       a.innerHTML = (isCSV ? '&#128196;' : '&#128202;') + ' ' + f.name;
-      dlButtons.appendChild(a);
+      indiv.appendChild(a);
     });
+    dlButtons.appendChild(indiv);
   });
 
   socket.on('job_error', d => {
