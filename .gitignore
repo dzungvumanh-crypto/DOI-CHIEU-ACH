@@ -10,6 +10,8 @@ DOI CHIEU ACH/
 test_input/
 test_output/
 _test_tmp/
+_python/
+_setup/
 *.zip
 
 # File debug tam thoi

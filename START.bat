@@ -10,43 +10,57 @@ echo.
 cd /d "%~dp0"
 
 REM ============================================================
-REM BUOC 1: KIEM TRA PYTHON
+REM BUOC 1: TIM PYTHON
+REM  - Uu tien Python cuc bo (_python\) neu da chay INSTALL.bat
+REM  - Du phong: Python he thong neu co san
 REM ============================================================
-python --version >nul 2>&1
-if not errorlevel 1 goto :PYTHON_OK
+set "PYTHON_EXE="
 
-echo [!] Chua co Python. Dang tu dong cai...
-winget install -e --id Python.Python.3.12 --accept-package-agreements --accept-source-agreements >nul 2>&1
-set "PATH=%LOCALAPPDATA%\Programs\Python\Python312\;%LOCALAPPDATA%\Programs\Python\Python312\Scripts\;%PATH%"
-python --version >nul 2>&1
-if not errorlevel 1 goto :PYTHON_OK
+if exist "%~dp0_python\python.exe" (
+    set "PYTHON_EXE=%~dp0_python\python.exe"
+    echo [OK] Python cuc bo: _python\python.exe
+    goto :CHECK_LIBS
+)
 
-echo [!] Cai tu dong that bai. Tai Python tai:
-echo     https://www.python.org/downloads/
-echo     (Tick "Add Python to PATH" khi cai)
+python --version >nul 2>&1
+if not errorlevel 1 (
+    set "PYTHON_EXE=python"
+    echo [OK] Python he thong san sang.
+    goto :CHECK_LIBS
+)
+
+echo [LOI] Chua co Python!
+echo       Hay chay INSTALL.bat truoc.
 pause & exit /b 1
-
-:PYTHON_OK
-echo [OK] Python san sang.
 
 REM ============================================================
 REM BUOC 2: KIEM TRA THU VIEN
 REM ============================================================
-python -c "import pandas, pyzipper, xlsxwriter, openpyxl, tqdm; import python_calamine" >nul 2>&1
-if not errorlevel 1 goto :LIB_OK
-echo [INFO] Dang cai thu vien...
-python -m pip install -r requirements.txt --quiet
-if errorlevel 1 ( echo [LOI] Cai thu vien that bai. & pause & exit /b 1 )
-REM Cai them python-calamine neu pip install tren bo sot
-python -m pip install python-calamine --quiet >nul 2>&1
-:LIB_OK
-echo [OK] Thu vien san sang.
+:CHECK_LIBS
+"%PYTHON_EXE%" -c "import pandas, pyzipper, xlsxwriter, openpyxl, tqdm; import python_calamine" >nul 2>&1
+if not errorlevel 1 goto :FIND_DATA
+
+echo [INFO] Thu vien chua du, dang cai...
+if exist "%~dp0_setup\packages" (
+    "%PYTHON_EXE%" -m pip install ^
+        --find-links="%~dp0_setup\packages" ^
+        --no-index ^
+        -r requirements.txt --quiet
+) else (
+    "%PYTHON_EXE%" -m pip install -r requirements.txt --quiet
+)
+if errorlevel 1 (
+    echo [LOI] Cai thu vien that bai! Hay chay INSTALL.bat truoc.
+    pause & exit /b 1
+)
 
 REM ============================================================
 REM BUOC 3: XAC DINH THU MUC DU LIEU
 REM   - Keo tha FOLDER vao START.bat -> %1 = duong dan folder do
 REM   - Double-click truc tiep       -> dung thu muc "input"
 REM ============================================================
+:FIND_DATA
+echo [OK] Thu vien san sang.
 echo.
 set "INPUT_DIR="
 
@@ -101,7 +115,7 @@ echo.
 echo [INFO] Bat dau xu ly...
 echo.
 
-python main.py --input "%INPUT_DIR%" --output "output" --date "%NGAY_DC%"
+"%PYTHON_EXE%" main.py --input "%INPUT_DIR%" --output "output" --date "%NGAY_DC%"
 
 echo.
 if errorlevel 1 (
