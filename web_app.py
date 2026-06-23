@@ -34,6 +34,9 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 # Luu danh sach file ket qua theo job_id de phuc vu /download_all
 _job_files: dict = {}
 
+# Cancel event theo job_id — set() de yeu cau dung xu ly
+_cancel_events: dict = {}
+
 
 @app.route('/')
 def index():
@@ -73,7 +76,19 @@ def upload_files():
     return jsonify({'job_id': job_id, 'message': 'Dang xu ly...'})
 
 
+@app.route('/cancel/<job_id>', methods=['POST'])
+def cancel_job(job_id):
+    ev = _cancel_events.get(job_id)
+    if ev:
+        ev.set()
+        return jsonify({'ok': True})
+    return jsonify({'ok': False, 'msg': 'Khong tim thay job'}), 404
+
+
 def _run_processing(job_id: str, input_dir: str, ngay: str):
+    cancel_ev = threading.Event()
+    _cancel_events[job_id] = cancel_ev
+
     def emit_log(msg: str):
         socketio.emit('log', {'job_id': job_id, 'msg': msg})
 
@@ -84,7 +99,13 @@ def _run_processing(job_id: str, input_dir: str, ngay: str):
             output_dir=OUTPUT_DIR,
             ngay=ngay,
             log_callback=emit_log,
+            cancel_event=cancel_ev,
         )
+
+        if output_path is None:
+            # main_from_dir tra ve None khi cancel_event duoc set
+            socketio.emit('job_cancelled', {'job_id': job_id})
+            return
 
         # Thu thap tat ca file ket qua (xlsx + CSV)
         base = os.path.basename(output_path).replace('.xlsx', '')
@@ -99,8 +120,9 @@ def _run_processing(job_id: str, input_dir: str, ngay: str):
         socketio.emit('done', {'job_id': job_id, 'files': result_files})
     except Exception as e:
         import traceback
-        err_msg = str(e) + '\n' + traceback.format_exc()
         socketio.emit('job_error', {'job_id': job_id, 'msg': str(e)})
+    finally:
+        _cancel_events.pop(job_id, None)
 
 
 @app.route('/download/<filename>')

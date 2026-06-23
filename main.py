@@ -332,8 +332,14 @@ def xuat_excel(output_path: str, session_id: str,
 
 # ─── main_from_dir — dung cho Web UI (thread-safe) ────────────────
 
+def _cancelled(ev) -> bool:
+    """Tra ve True neu cancel_event duoc set (nguoi dung bam Dung)."""
+    return ev is not None and ev.is_set()
+
+
 def main_from_dir(input_dir: str, output_dir: str,
-                  ngay: str = None, log_callback=None) -> str:
+                  ngay: str = None, log_callback=None,
+                  cancel_event=None) -> str:
     """
     Phien ban cua main() dung cho Web UI.
     - input_dir: thu muc da co file upload
@@ -399,6 +405,11 @@ def main_from_dir(input_dir: str, output_dir: str,
 
     log(f'Tim thay: GL02={len(gl02_files)}, DI={len(mis_di_files)}, DEN={len(mis_den_files)}')
 
+    # [CANCEL POINT 1] Truoc khi bat dau xu ly nang — kiem tra sau khi doc file list
+    if _cancelled(cancel_event):
+        log('[CANCELLED] Nguoi dung da dung. Khong xu ly.')
+        return None
+
     # Phase 1: B2 + B3 + B6 song song; B4 khoi dong ngay khi B3 xong (khong cho B2/B6)
     with ThreadPoolExecutor(max_workers=3) as ex:
         f_gl02    = ex.submit(xu_ly_gl02,    gl02_files[0], log_callback)
@@ -407,6 +418,14 @@ def main_from_dir(input_dir: str, output_dir: str,
 
         # B4 can dict_gw_count tu B3; bat dau ngay khi B3 xong, chay song song B2/B6 con lai
         dict_gw_count, df_gw_raw = f_gw.result()
+
+        # [CANCEL POINT 2] Sau khi B3 xong — truoc khi nop B4 (buoc nang nhat)
+        if _cancelled(cancel_event):
+            log('[CANCELLED] Nguoi dung da dung sau B3. Cho B2/B6 hoan thanh...')
+            f_gl02.result()
+            f_mis_den.result()
+            return None
+
         f_mis_di = ex.submit(
             xu_ly_mis_di,
             mis_di_files, dict_gw_count, session_id,
@@ -416,6 +435,11 @@ def main_from_dir(input_dir: str, output_dir: str,
         npo_di, npo_den          = f_gl02.result()
         df_mis_den               = f_mis_den.result()
         mis_di_final, df_timeout = f_mis_di.result()
+
+    # [CANCEL POINT 3] Sau Phase 1 — truoc Phase 2 va ghi Excel
+    if _cancelled(cancel_event):
+        log('[CANCELLED] Nguoi dung da dung sau Phase 1.')
+        return None
 
     # CAP_CN_TIEN: so sanh count MIS_TPAY vs GW per CN+TIEN (thay pivot thu cong)
     df_cap_cn_tien = _tao_cap_cn_tien(mis_di_final, df_timeout, dict_gw_count)
@@ -427,6 +451,11 @@ def main_from_dir(input_dir: str, output_dir: str,
 
         df_mis_di_khop, df_npo_di_thua, df_mis_di_thua    = f_di.result()
         df_mis_den_khop, df_npo_den_thua, df_mis_den_thua = f_den.result()
+
+    # [CANCEL POINT 4] Truoc ghi Excel (buoc cuoi)
+    if _cancelled(cancel_event):
+        log('[CANCELLED] Nguoi dung da dung truoc khi ghi Excel.')
+        return None
 
     # PHAN_TICH: dashboard chat luong doi chieu (thay phan tich thu cong)
     df_phan_tich = phan_tich(

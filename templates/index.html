@@ -54,13 +54,40 @@
   #file-count { font-size: 12px; color: #059669; margin-top: 8px; font-weight: 600; display: none; }
   #browser-note { font-size: 11px; color: #9ca3af; margin-top: 8px; text-align: center; }
 
-  #status-bar { margin-top: 20px; display: none; align-items: center; gap: 10px; }
+  #status-bar { margin-top: 20px; display: none; align-items: center; gap: 10px; flex-wrap: wrap; }
   #status-bar.visible { display: flex; }
   #progress-wrap { margin-top: 10px; display: none; }
   #progress-wrap.visible { display: block; }
   #stage-text { font-size: 11px; color: #6b7280; margin-bottom: 4px; }
   #progress-track { background: #e5e7eb; border-radius: 6px; height: 8px; overflow: hidden; }
   #progress-bar { height: 100%; background: #3b82f6; width: 0%; transition: width .4s ease; }
+  #eta-text { font-size: 11px; color: #6b7280; margin-top: 5px; min-height: 16px; }
+
+  #cancel-btn {
+    margin-left: auto; padding: 5px 14px;
+    background: #fff; color: #dc2626;
+    border: 1.5px solid #dc2626; border-radius: 6px;
+    font-size: 13px; cursor: pointer; white-space: nowrap;
+    transition: background .15s, color .15s;
+  }
+  #cancel-btn:hover:not(:disabled) { background: #dc2626; color: #fff; }
+  #cancel-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+  #cancelled-section { margin-top: 18px; display: none; }
+  #cancelled-section.visible { display: block; }
+  #cancelled-msg {
+    padding: 12px 16px; background: #fff7ed; border: 1px solid #fed7aa;
+    border-radius: 8px; color: #9a3412; font-size: 13px; margin-bottom: 12px;
+  }
+  .restart-btn {
+    display: inline-block; padding: 8px 18px; border-radius: 7px;
+    font-size: 13px; cursor: pointer; border: none; margin-right: 8px;
+    transition: background .15s;
+  }
+  .restart-btn.primary { background: #1a56a0; color: #fff; }
+  .restart-btn.primary:hover { background: #1e40af; }
+  .restart-btn.secondary { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; }
+  .restart-btn.secondary:hover { background: #e5e7eb; }
   .spinner {
     width: 18px; height: 18px;
     border: 2.5px solid #bfdbfe; border-top-color: #3b82f6;
@@ -161,14 +188,25 @@
   <div id="status-bar">
     <div class="spinner"></div>
     <span id="status-text">Dang xu ly...</span>
+    <button id="cancel-btn" onclick="cancelJob()">&#9632; Dung</button>
   </div>
 
   <div id="progress-wrap">
     <div id="stage-text">Khoi dong...</div>
     <div id="progress-track"><div id="progress-bar"></div></div>
+    <div id="eta-text"></div>
   </div>
 
   <div id="log"></div>
+
+  <!-- Hien thi sau khi bi huy -->
+  <div id="cancelled-section">
+    <div id="cancelled-msg">
+      &#9888; Da dung xu ly. Ban co the chon lai file hoac chay lai voi file hien tai.
+    </div>
+    <button class="restart-btn primary" onclick="retryWithSameFiles()">&#9654; Chay lai</button>
+    <button class="restart-btn secondary" onclick="resetUI()">&#128196; Chon file moi</button>
+  </div>
 
   <div id="download-section">
     <h3>Tai ket qua:</h3>
@@ -243,6 +281,57 @@
   let currentJobId = '';
   let pendingFiles = [];   // files chon/drop, cho den khi bam Xu ly
   let currentPct   = 0;   // giu lai % hien tai de tranh progress giat lui
+  let startTime    = null; // thoi diem bat dau xu ly (ms)
+  let etaTimer     = null; // interval ID cua ETA timer
+
+  const cancelledSection = document.getElementById('cancelled-section');
+  const etaText          = document.getElementById('eta-text');
+  const cancelBtn        = document.getElementById('cancel-btn');
+
+  // ── ETA timer ──────────────────────────────────────────────────────
+  function fmtTime(sec) {
+    sec = Math.max(0, Math.round(sec));
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return m > 0 ? m + 'p ' + s + 's' : s + 's';
+  }
+
+  function startEtaTimer() {
+    startTime = Date.now();
+    if (etaTimer) clearInterval(etaTimer);
+    etaTimer = setInterval(function() {
+      if (!startTime) return;
+      const elapsed = (Date.now() - startTime) / 1000;
+      if (currentPct <= 2) {
+        etaText.textContent = 'Da qua: ' + fmtTime(elapsed);
+        return;
+      }
+      const totalEst  = elapsed / currentPct * 100;
+      const remaining = Math.max(0, totalEst - elapsed);
+      etaText.textContent = 'Da qua: ' + fmtTime(elapsed)
+        + (currentPct < 99 ? '   —   Con khoang: ' + fmtTime(remaining) : '');
+    }, 1000);
+  }
+
+  function stopEtaTimer() {
+    if (etaTimer) { clearInterval(etaTimer); etaTimer = null; }
+  }
+
+  // ── Huy xu ly ──────────────────────────────────────────────────────
+  function cancelJob() {
+    if (!currentJobId) return;
+    cancelBtn.disabled = true;
+    cancelBtn.textContent = 'Dang dung...';
+    addLog('[USER] Yeu cau dung xu ly...', 'line-err');
+    fetch('/cancel/' + currentJobId, { method: 'POST' })
+      .catch(() => {});   // ket qua xu ly qua socket job_cancelled
+  }
+
+  // Chay lai voi cung bo file da chon
+  function retryWithSameFiles() {
+    cancelledSection.classList.remove('visible');
+    sendFiles();
+  }
 
   function addLog(msg, cls) {
     const line = document.createElement('div');
@@ -264,10 +353,25 @@
     updateProgress(d.msg);
   });
 
+  socket.on('job_cancelled', d => {
+    if (d.job_id !== currentJobId) return;
+    stopEtaTimer();
+    addLog('[DUNG] Xu ly da bi huy theo yeu cau.', 'line-err');
+    statusBar.classList.remove('visible');
+    progressWrap.classList.remove('visible');
+    cancelledSection.classList.add('visible');
+    cancelBtn.disabled = false;
+    cancelBtn.textContent = '■ Dung';
+  });
+
   socket.on('done', d => {
     if (d.job_id !== currentJobId) return;
+    stopEtaTimer();
     addLog('HOAN THANH!', 'line-done');
     setProgress(100, 'Hoan thanh!');
+    etaText.textContent = startTime
+      ? 'Tong thoi gian: ' + fmtTime((Date.now() - startTime) / 1000)
+      : '';
     statusBar.classList.remove('visible');
     dlSection.classList.add('visible');
     dlButtons.innerHTML = '';
@@ -295,9 +399,12 @@
 
   socket.on('job_error', d => {
     if (d.job_id !== currentJobId) return;
+    stopEtaTimer();
     addLog('LOI: ' + d.msg, 'line-err');
     statusBar.classList.remove('visible');
     progressWrap.classList.remove('visible');
+    cancelBtn.disabled = false;
+    cancelBtn.textContent = '■ Dung';
   });
 
   // --- Lay file tu DataTransferItem (folder drag tu Explorer) ---
@@ -347,7 +454,10 @@
     statusBar.classList.add('visible');
     progressWrap.classList.add('visible');
     progressBar.style.background = '#3b82f6';
+    cancelBtn.disabled = false;
+    cancelBtn.textContent = '■ Dung';
     setProgress(2, 'Dang tai len file...');
+    startEtaTimer();
     addLog('Dang tai len ' + pendingFiles.length + ' file...');
 
     const fd   = new FormData();
@@ -373,7 +483,9 @@
 
   function resetUI(clearFiles) {
     if (clearFiles === undefined) clearFiles = true;
+    stopEtaTimer();
     currentJobId = '';
+    startTime    = null;
     logEl.innerHTML = '';
     logEl.classList.remove('visible');
     statusBar.classList.remove('visible');
@@ -382,7 +494,11 @@
     progressBar.style.background = '#3b82f6';
     currentPct = 0;
     stageText.textContent = 'Khoi dong...';
+    etaText.textContent   = '';
+    cancelBtn.disabled    = false;
+    cancelBtn.textContent = '■ Dung';
     dlSection.classList.remove('visible');
+    cancelledSection.classList.remove('visible');
     dlButtons.innerHTML = '';
     if (clearFiles) {
       pendingFiles = [];
