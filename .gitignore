@@ -7,6 +7,8 @@ output/
 output_*/
 uploads/
 DOI CHIEU ACH/
+test_input/
+test_output/
 *.zip
 
 # File debug tam thoi
