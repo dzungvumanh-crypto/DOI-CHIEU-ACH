@@ -9,6 +9,7 @@ uploads/
 DOI CHIEU ACH/
 test_input/
 test_output/
+_test_tmp/
 *.zip
 
 # File debug tam thoi
