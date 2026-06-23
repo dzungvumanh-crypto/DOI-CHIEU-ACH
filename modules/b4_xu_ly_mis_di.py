@@ -73,26 +73,22 @@ def _tao_so_trace(df: pd.DataFrame) -> pd.Series:
     return se.where(has_se, tr)
 
 
-def _get_timeout_indices(df_tpay: pd.DataFrame, df_scnl: pd.DataFrame,
+def _get_timeout_indices(df_tpay: pd.DataFrame, df_non_tpay: pd.DataFrame,
                          dict_gw_count: Dict[str, int]) -> pd.Index:
     """
-    Tra ve Index cua cac dong TPAY thua so voi GW.
-    GW slot da duoc SCNL dung can phai tru ra truoc khi tinh TPAY thua.
-    KHONG dung ignore_index de tranh mat index goc.
+    Tra ve Index cua cac dong TPAY thua so voi GW (theo doc 3.2).
+    df_non_tpay: SCNL + TXRT — tat ca lenh da su dung slot GW.
+    surplus = count_all_mis - count_gw; n_timeout = min(surplus, count_tpay).
     """
-    scnl_keys = (
-        df_scnl['CHI_NHANH'].astype(str).str.strip()
-        + df_scnl['SO_TIEN'].astype(str)
-    )
-    count_scnl = scnl_keys.value_counts().to_dict()
+    count_non_tpay = df_non_tpay['CN tiền Hub'].value_counts().to_dict()
 
     idx_list = []
     for key, group in df_tpay.groupby('CN tiền Hub', sort=False):
-        count_mis    = len(group)
+        count_tpay   = len(group)
         count_gw     = dict_gw_count.get(str(key), 0)
-        count_scnl_k = count_scnl.get(str(key), 0)
-        available_gw = max(0, count_gw - count_scnl_k)
-        thua = count_mis - available_gw
+        count_others = count_non_tpay.get(str(key), 0)
+        available_gw = max(0, count_gw - count_others)
+        thua = count_tpay - available_gw
         if thua > 0:
             idx_list.append(group.tail(thua).index)
     if not idx_list:
@@ -173,10 +169,10 @@ def xu_ly_mis_di(zip_paths: List[str], dict_gw_count: Dict[str, int], session_id
     loc = df_mis_di.columns.get_loc('CHI_NHANH') + 1
     df_mis_di.insert(loc, 'CN tiền Hub', cn_tien)
 
-    # Tinh timeout
-    df_scnl_in_mis = df_mis_di[df_mis_di['TRANG_THAI_LENH'] == 'SCNL']
+    # Tinh timeout — SCNL va TXRT deu chiem slot GW (theo doc 3.2: dem ca SCNL+TXRT+TPAY vs GW)
+    df_non_tpay_in_mis = df_mis_di[df_mis_di['TRANG_THAI_LENH'].isin(['SCNL', 'TXRT'])]
     df_tpay_in_mis = df_mis_di[df_mis_di['TRANG_THAI_LENH'] == 'TPAY']
-    timeout_idx = _get_timeout_indices(df_tpay_in_mis, df_scnl_in_mis, dict_gw_count)
+    timeout_idx = _get_timeout_indices(df_tpay_in_mis, df_non_tpay_in_mis, dict_gw_count)
 
     df_timeout      = df_mis_di.loc[timeout_idx].copy()
     df_mis_di_final = df_mis_di[~df_mis_di.index.isin(timeout_idx)].copy()

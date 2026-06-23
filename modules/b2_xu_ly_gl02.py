@@ -10,12 +10,16 @@ _RE_TRACE = re.compile(r'[A-Za-z]+(\d+)$')
 
 
 def _so_trace(ref: str):
-    """Lay phan so cuoi cua REFERENCE. Tra None neu khong co."""
+    """Lay phan so cuoi cua REFERENCE, bo leading zero (nhat quan voi TRACE.lstrip('0') trong B4)."""
     m = _RE_TRACE.search(str(ref))
-    return m.group(1) if m else None
+    if not m:
+        return None
+    stripped = m.group(1).lstrip('0')
+    return stripped or '0'
 
 
-_LOCAC_TARGET = '502003'
+_LOCAC_TARGET   = '502003'
+_CUSTOMER_ACH   = '1000-003526275'  # Ma khach hang kenh ACH — loc khi LOCAC 502003 co nhieu CUSTOMER
 
 
 def _doc_zip(zip_path: str) -> pd.DataFrame:
@@ -34,7 +38,6 @@ def _doc_zip(zip_path: str) -> pd.DataFrame:
                     with z.open(name) as raw_f:
                         wrapped = io.TextIOWrapper(raw_f, encoding=enc, errors='strict')
                         file_frames = []
-                        skip_file   = False
                         for i, chunk in enumerate(
                             pd.read_csv(
                                 wrapped, dtype=str,
@@ -47,17 +50,15 @@ def _doc_zip(zip_path: str) -> pd.DataFrame:
                                 missing = [c for c in _COLS_REQUIRED if c not in chunk.columns]
                                 if missing:
                                     raise ValueError(f'Thieu cot: {missing}')
-                                # Toi uu: skip ca file neu dong dau co LOCAC khac target
-                                if ('LOCAC' in chunk.columns and len(chunk) > 0
-                                        and chunk.iloc[0]['LOCAC'].strip() != _LOCAC_TARGET):
-                                    skip_file = True
-                                    break
                             # Loc LOCAC ngay tai chunk — khong giu dong thua
                             if 'LOCAC' in chunk.columns:
                                 chunk = chunk[chunk['LOCAC'].str.strip() == _LOCAC_TARGET]
+                            # Loc CUSTOMER ACH — tu 20/06/2026 LOCAC 502003 co nhieu CUSTOMER
+                            if 'CUSTOMER' in chunk.columns:
+                                chunk = chunk[chunk['CUSTOMER'].str.strip() == _CUSTOMER_ACH]
                             if not chunk.empty:
                                 file_frames.append(chunk)
-                        if not skip_file and file_frames:
+                        if file_frames:
                             frames.append(pd.concat(file_frames, ignore_index=True))
                     break  # encoding thanh cong
                 except UnicodeDecodeError:
@@ -76,7 +77,8 @@ def xu_ly_gl02(zip_path: str, log_callback=None):
     df['DRAMOUNT'] = pd.to_numeric(df['DRAMOUNT'], errors='coerce').fillna(0).astype('int64')
 
     # LOCAC da duoc loc trong _doc_zip — khong can filter lai
-    df['LOCAC'] = df['LOCAC'].astype(str).str.strip()
+    if 'LOCAC' in df.columns:
+        df['LOCAC'] = df['LOCAC'].astype(str).str.strip()
 
     # Tao SO_TRACE
     df['SO_TRACE'] = df['REFERENCE'].map(_so_trace)
