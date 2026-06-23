@@ -19,8 +19,10 @@ _LOCAC_TARGET = '502003'
 
 
 def _doc_zip(zip_path: str) -> pd.DataFrame:
-    """Doc ZIP co nhieu CSV, chi lay file co LOCAC=502003.
-    Dung z.open()+chunksize de tranh OOM khi co file lon LOCAC khac."""
+    """
+    Doc ZIP co nhieu CSV, loc LOCAC=502003 tung chunk (khong doc toan bo roi filter sau).
+    Toi uu: skip ca file neu dong dau khong phai LOCAC_TARGET.
+    """
     frames = []
     with pyzipper.AESZipFile(zip_path, 'r') as z:
         z.setpassword(ZIP_PASSWORD)
@@ -45,11 +47,16 @@ def _doc_zip(zip_path: str) -> pd.DataFrame:
                                 missing = [c for c in _COLS_REQUIRED if c not in chunk.columns]
                                 if missing:
                                     raise ValueError(f'Thieu cot: {missing}')
-                                # Kiem tra LOCAC cua file qua dong dau tien
-                                if 'LOCAC' in chunk.columns and chunk['LOCAC'].iloc[0].strip() != _LOCAC_TARGET:
+                                # Toi uu: skip ca file neu dong dau co LOCAC khac target
+                                if ('LOCAC' in chunk.columns and len(chunk) > 0
+                                        and chunk.iloc[0]['LOCAC'].strip() != _LOCAC_TARGET):
                                     skip_file = True
                                     break
-                            file_frames.append(chunk)
+                            # Loc LOCAC ngay tai chunk — khong giu dong thua
+                            if 'LOCAC' in chunk.columns:
+                                chunk = chunk[chunk['LOCAC'].str.strip() == _LOCAC_TARGET]
+                            if not chunk.empty:
+                                file_frames.append(chunk)
                         if not skip_file and file_frames:
                             frames.append(pd.concat(file_frames, ignore_index=True))
                     break  # encoding thanh cong
@@ -68,9 +75,8 @@ def xu_ly_gl02(zip_path: str, log_callback=None):
     df['CRAMOUNT'] = pd.to_numeric(df['CRAMOUNT'], errors='coerce').fillna(0).astype('int64')
     df['DRAMOUNT'] = pd.to_numeric(df['DRAMOUNT'], errors='coerce').fillna(0).astype('int64')
 
-    # Loc theo LOCAC=502003: chi lay dong phat sinh ACH (MSSR08 export toan bo branch)
+    # LOCAC da duoc loc trong _doc_zip — khong can filter lai
     df['LOCAC'] = df['LOCAC'].astype(str).str.strip()
-    df = df[df['LOCAC'] == '502003'].reset_index(drop=True)
 
     # Tao SO_TRACE
     df['SO_TRACE'] = df['REFERENCE'].map(_so_trace)

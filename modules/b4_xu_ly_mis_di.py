@@ -16,27 +16,52 @@ _COLS = [
     'MA_GIAO_DICH', 'NOI_DUNG', 'NGAY_KENH_TRA',
 ]
 
+_NULL_SESSION = {'', 'nan', 'None', 'NaN'}
 
-def _doc_zip(zip_path: str) -> pd.DataFrame:
+
+def _doc_zip(zip_path: str, session_filter: str = None) -> pd.DataFrame:
+    """
+    Doc ZIP chua CSV MIS_DI, su dung streaming (z.open) thay vi z.read() de giam RAM.
+    session_filter: neu truyen, chi giu dong co SESSION == session_filter hoac SESSION null —
+    giam ~60-70% du lieu truoc khi xu ly tiep theo.
+    """
     frames = []
     with pyzipper.AESZipFile(zip_path, 'r') as z:
         z.setpassword(ZIP_PASSWORD)
         for name in z.namelist():
-            if name.lower().endswith('.csv'):
-                raw = z.read(name)
-                for enc in ('utf-8-sig', 'cp1252'):
-                    try:
-                        df = pd.read_csv(
-                            io.BytesIO(raw),
-                            dtype=str,
-                            usecols=lambda c: c in _COLS,
-                            encoding=enc,
-                            low_memory=False,
-                        )
-                        frames.append(df)
-                        break
-                    except UnicodeDecodeError:
-                        continue
+            if not name.lower().endswith('.csv'):
+                continue
+            for enc in ('utf-8-sig', 'cp1252'):
+                try:
+                    with z.open(name) as raw_f:
+                        wrapped = io.TextIOWrapper(raw_f, encoding=enc, errors='strict')
+                        if session_filter:
+                            sid = str(session_filter)
+                            chunk_list = []
+                            for chunk in pd.read_csv(
+                                wrapped, dtype=str,
+                                usecols=lambda c: c in _COLS,
+                                chunksize=100_000, low_memory=False,
+                            ):
+                                if 'SESSION' in chunk.columns:
+                                    sess = (chunk['SESSION'].astype(str)
+                                            .str.strip().str.lstrip("'"))
+                                    mask = sess.isin({sid} | _NULL_SESSION)
+                                    chunk = chunk[mask]
+                                if not chunk.empty:
+                                    chunk_list.append(chunk)
+                            if chunk_list:
+                                frames.append(pd.concat(chunk_list, ignore_index=True))
+                        else:
+                            df = pd.read_csv(
+                                wrapped, dtype=str,
+                                usecols=lambda c: c in _COLS,
+                                low_memory=False,
+                            )
+                            frames.append(df)
+                    break  # encoding thanh cong
+                except UnicodeDecodeError:
+                    continue
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=_COLS)
 
 
@@ -89,9 +114,11 @@ def xu_ly_mis_di(zip_paths: List[str], dict_gw_count: Dict[str, int], session_id
     _log = log_callback or print
     _log('[B4] Doc MIS_DI tu 2 ZIP...')
 
-    # A1: doc 2 ZIP song song thay vi tuan tu
+    sid = str(session_id)
+
+    # Doc 2 ZIP song song, loc session ngay trong qua trinh doc (giam RAM ~60-70%)
     with ThreadPoolExecutor(max_workers=2) as ex:
-        futures = [ex.submit(_doc_zip, p) for p in zip_paths]
+        futures = [ex.submit(_doc_zip, p, sid) for p in zip_paths]
         frames  = [f.result() for f in futures]
     df = pd.concat(frames, ignore_index=True)
 
@@ -112,8 +139,6 @@ def xu_ly_mis_di(zip_paths: List[str], dict_gw_count: Dict[str, int], session_id
     # Chuan hoa SESSION
     df['SESSION'] = df['SESSION'].astype(str).str.strip().str.lstrip("'")
     df['SESSION_NULL'] = df['SESSION'].isin(['', 'nan', 'None', 'NaN'])
-
-    sid = str(session_id)
 
     # SCNL: SESSION = session_id
     mask_scnl = df['TRANG_THAI_LENH'] == 'SCNL'

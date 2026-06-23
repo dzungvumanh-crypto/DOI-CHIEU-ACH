@@ -139,6 +139,9 @@ def _viet_sheet(workbook, worksheet, df: pd.DataFrame, header_color: str):
             df[col] = df[col].dt.strftime('%d/%m/%Y %H:%M:%S')
 
     for col_idx, col_name in enumerate(df.columns):
+        # Auto column width: dua tren do dai ten cot, toi thieu 8, toi da 30
+        width = min(max(len(str(col_name)), 8) + 2, 30)
+        worksheet.set_column(col_idx, col_idx, width)
         worksheet.write(0, col_idx, str(col_name), fmt_header)
 
     rows = df.fillna('').values.tolist()
@@ -275,52 +278,55 @@ def xuat_excel(output_path: str, session_id: str,
     ]
 
     workbook = xlsxwriter.Workbook(output_path, {'strings_to_numbers': False, 'constant_memory': True})
-    csv_files_created = []
+    csv_writes = []   # list of (sheet_name, csv_path, future)
     _log = log_callback or print
     total_sheets = len(sheets)
 
-    for i, (sheet_name, df, color) in enumerate(tqdm(sheets, desc='Ghi Excel', unit='sheet'), 1):
-        _log(f'[EXCEL] ({i}/{total_sheets}) Ghi sheet: {sheet_name}...')
-        # Sheet lon → ghi CSV rieng, de note trong Excel
-        if df is not None and len(df) > CSV_THRESHOLD:
-            csv_path = os.path.join(output_dir, f'{sheet_name}_{ngay_str}.csv')
-            df.to_csv(csv_path, index=False, encoding='utf-8-sig')
-            csv_files_created.append((sheet_name, csv_path))
+    with ThreadPoolExecutor(max_workers=3) as csv_pool:
+        for i, (sheet_name, df, color) in enumerate(tqdm(sheets, desc='Ghi Excel', unit='sheet'), 1):
+            _log(f'[EXCEL] ({i}/{total_sheets}) Ghi sheet: {sheet_name}...')
+            # Sheet lon → ghi CSV song song, ghi note vao Excel ngay khong cho CSV xong
+            if df is not None and len(df) > CSV_THRESHOLD:
+                csv_path = os.path.join(output_dir, f'{sheet_name}_{ngay_str}.csv')
+                fut = csv_pool.submit(df.to_csv, csv_path, index=False, encoding='utf-8-sig')
+                csv_writes.append((sheet_name, csv_path, fut))
+                ws = workbook.add_worksheet(sheet_name)
+                ws.set_tab_color(color)
+                ws.write(0, 0, f'[Du lieu lon - xem file: {os.path.basename(csv_path)}]')
+                ws.write(1, 0, f'Tong so dong: {len(df):,}')
+                ws.write(2, 0, 'LUU Y: Mo file CSV qua Excel > Data > Tu Van ban/CSV (khong double-click truc tiep).')
+                ws.write(3, 0, 'Double-click co the mat so 0 dau o cot TRACE, MSGSEQ va sai dinh dang so tien.')
+                _log(f'[CSV] {sheet_name}: {len(df):,} dong → dang ghi nen...')
+                continue
+
             ws = workbook.add_worksheet(sheet_name)
             ws.set_tab_color(color)
-            ws.write(0, 0, f'[Du lieu lon - xem file: {os.path.basename(csv_path)}]')
-            ws.write(1, 0, f'Tong so dong: {len(df):,}')
-            ws.write(2, 0, 'LUU Y: Mo file CSV qua Excel > Data > Tu Van ban/CSV (khong double-click truc tiep).')
-            ws.write(3, 0, 'Double-click co the mat so 0 dau o cot TRACE, MSGSEQ va sai dinh dang so tien.')
-            _log(f'[CSV] {sheet_name}: {len(df):,} dong -> {csv_path}')
-            continue
+            if sheet_name == 'TONG_KET':
+                _viet_tong_ket(
+                    workbook, ws, session_id, ngay_display,
+                    len(df_mis_di_khop)  if df_mis_di_khop  is not None else 0,
+                    _tong_tien(df_mis_di_khop,   'SO_TIEN'),
+                    len(df_npo_di_thua)  if df_npo_di_thua  is not None else 0,
+                    _tong_tien(df_npo_di_thua,   'CRAMOUNT'),
+                    len(df_mis_di_thua)  if df_mis_di_thua  is not None else 0,
+                    _tong_tien(df_mis_di_thua,   'SO_TIEN'),
+                    len(df_timeout)      if df_timeout      is not None else 0,
+                    _tong_tien(df_timeout,       'SO_TIEN'),
+                    len(df_mis_den_khop) if df_mis_den_khop is not None else 0,
+                    _tong_tien(df_mis_den_khop,  'SO_TIEN'),
+                    len(df_npo_den_thua) if df_npo_den_thua is not None else 0,
+                    _tong_tien(df_npo_den_thua,  'DRAMOUNT'),
+                    len(df_mis_den_thua) if df_mis_den_thua is not None else 0,
+                    _tong_tien(df_mis_den_thua,  'SO_TIEN'),
+                )
+            else:
+                _viet_sheet(workbook, ws, df, color)
 
-        ws = workbook.add_worksheet(sheet_name)
-        ws.set_tab_color(color)
-        if sheet_name == 'TONG_KET':
-            _viet_tong_ket(
-                workbook, ws, session_id, ngay_display,
-                len(df_mis_di_khop)  if df_mis_di_khop  is not None else 0,
-                _tong_tien(df_mis_di_khop,   'SO_TIEN'),
-                len(df_npo_di_thua)  if df_npo_di_thua  is not None else 0,
-                _tong_tien(df_npo_di_thua,   'CRAMOUNT'),
-                len(df_mis_di_thua)  if df_mis_di_thua  is not None else 0,
-                _tong_tien(df_mis_di_thua,   'SO_TIEN'),
-                len(df_timeout)      if df_timeout      is not None else 0,
-                _tong_tien(df_timeout,       'SO_TIEN'),
-                len(df_mis_den_khop) if df_mis_den_khop is not None else 0,
-                _tong_tien(df_mis_den_khop,  'SO_TIEN'),
-                len(df_npo_den_thua) if df_npo_den_thua is not None else 0,
-                _tong_tien(df_npo_den_thua,  'DRAMOUNT'),
-                len(df_mis_den_thua) if df_mis_den_thua is not None else 0,
-                _tong_tien(df_mis_den_thua,  'SO_TIEN'),
-            )
-        else:
-            _viet_sheet(workbook, ws, df, color)
-
-    workbook.close()
-    _log(f'[DONE] Excel: {output_path}')
-    for name, path in csv_files_created:
+        workbook.close()
+        _log(f'[DONE] Excel: {output_path}')
+    # csv_pool.__exit__ da doi tat ca CSV xong moi thoat
+    for name, path, fut in csv_writes:
+        fut.result()  # raise neu co loi
         _log(f'       CSV  : {path}  ({name})')
 
 
@@ -393,21 +399,23 @@ def main_from_dir(input_dir: str, output_dir: str,
 
     log(f'Tim thay: GL02={len(gl02_files)}, DI={len(mis_di_files)}, DEN={len(mis_den_files)}')
 
-    # Phase 1: B2 + B3 + B6 song song
+    # Phase 1: B2 + B3 + B6 song song; B4 khoi dong ngay khi B3 xong (khong cho B2/B6)
     with ThreadPoolExecutor(max_workers=3) as ex:
         f_gl02    = ex.submit(xu_ly_gl02,    gl02_files[0], log_callback)
         f_gw      = ex.submit(xu_ly_gw,      gw_path, session_id, log_callback)
         f_mis_den = ex.submit(xu_ly_mis_den, mis_den_files, session_id, ngay_dt, log_callback)
 
-        npo_di, npo_den          = f_gl02.result()
+        # B4 can dict_gw_count tu B3; bat dau ngay khi B3 xong, chay song song B2/B6 con lai
         dict_gw_count, df_gw_raw = f_gw.result()
-        df_mis_den               = f_mis_den.result()
+        f_mis_di = ex.submit(
+            xu_ly_mis_di,
+            mis_di_files, dict_gw_count, session_id,
+            tpay_tu, tpay_den, log_callback,
+        )
 
-    # B4: can dict_gw_count tu B3, truyen tpay tuong minh (thread-safe)
-    mis_di_final, df_timeout = xu_ly_mis_di(
-        mis_di_files, dict_gw_count, session_id,
-        tpay_tu=tpay_tu, tpay_den=tpay_den, log_callback=log_callback
-    )
+        npo_di, npo_den          = f_gl02.result()
+        df_mis_den               = f_mis_den.result()
+        mis_di_final, df_timeout = f_mis_di.result()
 
     # CAP_CN_TIEN: so sanh count MIS_TPAY vs GW per CN+TIEN (thay pivot thu cong)
     df_cap_cn_tien = _tao_cap_cn_tien(mis_di_final, df_timeout, dict_gw_count)
