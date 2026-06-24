@@ -3,7 +3,7 @@ Chuong trinh doi chieu ACH: GL02 (NPO) vs MIS
 
 Cach chay:
     python main.py
-    python main.py --input ".\file du lieu" --output ".\output"
+    python main.py --input ".\\file du lieu" --output ".\\output"
 """
 import sys
 import os
@@ -122,6 +122,39 @@ _DO       = '#FFC7CE'
 _CAM      = '#FFEB9C'
 _XANH_LAM = '#DDEBF7'
 _XANH_NHAT = '#E2EFDA'
+
+
+def _viet_phan_tich(workbook, worksheet, df: pd.DataFrame):
+    """Ghi sheet PHAN_TICH voi mau sac theo _type: header/sub_header/canh_bao/data."""
+    if df is None or len(df) == 0:
+        worksheet.write(0, 0, '(Khong co du lieu)')
+        return
+
+    fmt_col_hdr  = workbook.add_format({'bold': True, 'font_size': 10, 'bg_color': '#DDEBF7', 'border': 1})
+    fmt_header   = workbook.add_format({'bold': True, 'font_size': 10, 'bg_color': '#BDD7EE', 'border': 1})
+    fmt_sub      = workbook.add_format({'bold': True, 'font_size': 10, 'bg_color': '#E2EFDA', 'border': 1})
+    fmt_canh_bao = workbook.add_format({'bold': True, 'font_size': 10, 'bg_color': '#FFEB9C', 'border': 1})
+    fmt_data     = workbook.add_format({'font_size': 10, 'border': 1})
+
+    cols   = ['Chi tieu', 'Gia tri', 'Ghi chu']
+    widths = [60, 30, 70]
+    for ci, (col, w) in enumerate(zip(cols, widths)):
+        worksheet.write(0, ci, col, fmt_col_hdr)
+        worksheet.set_column(ci, ci, w)
+
+    for row_idx, row in df.iterrows():
+        typ = str(row.get('_type', ''))
+        if typ == 'header':
+            fmt = fmt_header
+        elif typ == 'sub_header':
+            fmt = fmt_sub
+        elif typ == 'canh_bao':
+            fmt = fmt_canh_bao
+        else:
+            fmt = fmt_data
+        for ci, col in enumerate(cols):
+            val = row[col] if row[col] else ''
+            worksheet.write(row_idx + 1, ci, str(val), fmt)
 
 
 def _viet_sheet(workbook, worksheet, df: pd.DataFrame, header_color: str):
@@ -319,6 +352,8 @@ def xuat_excel(output_path: str, session_id: str,
                     len(df_mis_den_thua) if df_mis_den_thua is not None else 0,
                     _tong_tien(df_mis_den_thua,  'SO_TIEN'),
                 )
+            elif sheet_name == 'PHAN_TICH':
+                _viet_phan_tich(workbook, ws, df)
             else:
                 _viet_sheet(workbook, ws, df, color)
 
