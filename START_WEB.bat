@@ -18,6 +18,9 @@ set "PYTHON_EXE="
 
 if exist "%~dp0_python\python.exe" (
     set "PYTHON_EXE=%~dp0_python\python.exe"
+    REM Dam bao thu muc du an trong sys.path (.. = thu muc cha _python\)
+    findstr /X /C:".." "%~dp0_python\python312._pth" >nul 2>&1
+    if errorlevel 1 echo ..>>"%~dp0_python\python312._pth"
     echo [OK] Python cuc bo: _python\python.exe
     goto :CHECK_LIBS
 )

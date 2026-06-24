@@ -43,11 +43,15 @@ if not exist "_python\python.exe" (
 )
 echo [OK] Python 3.12 tai: %~dp0_python\
 
-REM ── BUOC 2: Bat site-packages ─────────────────────────────────
+REM ── BUOC 2: Bat site-packages + them duong dan du an ──────────
 echo [2/4] Kich hoat che do site-packages...
 REM Uncomment dong "#import site" trong python312._pth
 powershell -NoProfile -Command ^
     "(Get-Content '_python\python312._pth') -replace '#import site','import site' | Set-Content '_python\python312._pth' -Encoding ASCII"
+REM Them ".." vao _pth de Python tim thay main.py, modules\, v.v.
+REM (..) la thu muc cha cua _python\ = thu muc goc du an)
+findstr /X /C:".." "_python\python312._pth" >nul 2>&1
+if errorlevel 1 echo ..>>_python\python312._pth
 REM Tao thu muc site-packages
 if not exist "_python\Lib" mkdir "_python\Lib"
 mkdir "_python\Lib\site-packages" 2>nul
