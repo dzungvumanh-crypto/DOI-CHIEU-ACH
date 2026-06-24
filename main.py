@@ -206,25 +206,26 @@ def _viet_tong_ket(workbook, ws, session_id, ngay_doi_chieu_str,
 
     n_npo_di  = n_di_khop  + n_npo_di_thua
     n_npo_den = n_den_khop + n_npo_den_thua
-    ty_le_di  = round(n_di_khop  / n_npo_di  * 100, 2) if n_npo_di  > 0 else 0.0
-    ty_le_den = round(n_den_khop / n_npo_den * 100, 2) if n_npo_den > 0 else 0.0
+    n_mis_di_total = n_di_khop + n_mis_di_thua + n_timeout   # MIS_DI truoc khi bo timeout
 
     data = [
-        ('Ngay doi chieu',           ngay_doi_chieu_str,    ''),
-        ('Session',                  session_id,             ''),
-        ('',                         '',                     ''),
-        ('=== CHIEU DI ===',         '',                     ''),
-        ('So giao dich khop (MIS)',  n_di_khop,     s_di_khop),
-        ('NPO_DI thua',              n_npo_di_thua, s_npo_di_thua),
-        ('MIS_DI thua',              n_mis_di_thua, s_mis_di_thua),
-        ('Timeout khong kenh',       n_timeout,     s_timeout),
-        ('Ty le khop DI (%)',        ty_le_di,      f'{n_di_khop:,} / {n_npo_di:,}'),
-        ('',                         '',             ''),
-        ('=== CHIEU DEN ===',        '',             ''),
-        ('So giao dich khop (MIS)',  n_den_khop,    s_den_khop),
+        ('Ngay doi chieu',           ngay_doi_chieu_str, ''),
+        ('Session',                  session_id,          ''),
+        ('',                         '',                  ''),
+        ('=== CHIEU DI ===',         '',                  ''),
+        ('So giao dich khop (MIS)',  n_di_khop,      s_di_khop),
+        ('NPO_DI thua',              n_npo_di_thua,  s_npo_di_thua),
+        ('MIS_DI thua',              n_mis_di_thua,  s_mis_di_thua),
+        ('Timeout khong kenh',       n_timeout,      s_timeout),
+        ('Tong NPO_DI (can doi)',     n_npo_di,       f'{n_di_khop:,} khop + {n_npo_di_thua:,} thua'),
+        ('Tong MIS_DI (can doi)',     n_mis_di_total, f'{n_di_khop:,} khop + {n_mis_di_thua:,} thua + {n_timeout:,} timeout'),
+        ('',                         '',              ''),
+        ('=== CHIEU DEN ===',        '',              ''),
+        ('So giao dich khop (MIS)',  n_den_khop,     s_den_khop),
         ('NPO_DEN thua',             n_npo_den_thua, s_npo_den_thua),
         ('MIS_DEN thua',             n_mis_den_thua, s_mis_den_thua),
-        ('Ty le khop DEN (%)',       ty_le_den,     f'{n_den_khop:,} / {n_npo_den:,}'),
+        ('Tong NPO_DEN (can doi)',   n_npo_den,      f'{n_den_khop:,} khop + {n_npo_den_thua:,} thua'),
+        ('Tong MIS_DEN (can doi)',   n_den_khop + n_mis_den_thua, f'{n_den_khop:,} khop + {n_mis_den_thua:,} thua'),
     ]
 
     for row_idx, (label, val, tien) in enumerate(data, start=1):

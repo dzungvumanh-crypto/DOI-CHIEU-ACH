@@ -8,6 +8,7 @@ def phan_tich(df_npo_di_thua, df_mis_di_thua, df_npo_den_thua, df_mis_den_thua,
     ('Chi tieu', 'Gia tri', 'Ghi chu', '_type')
     _type: 'header' | 'sub_header' | 'canh_bao' | 'data' | ''
     main.py dung '_type' de ap dung mau khi ghi Excel, roi bo cot nay.
+    Khong su dung ty le phan tram (%). Chi so biet tuyet doi, so lieu can doi chinh xac.
     """
     def safe_len(df): return len(df) if df is not None else 0
 
@@ -16,25 +17,28 @@ def phan_tich(df_npo_di_thua, df_mis_di_thua, df_npo_den_thua, df_mis_den_thua,
             return 0
         return int(pd.to_numeric(df[col], errors='coerce').fillna(0).sum())
 
-    def pct(num, den):
-        return f'{num / den * 100:.2f}' if den > 0 else 'N/A'
+    n_npo_di_thua  = safe_len(df_npo_di_thua)
+    n_mis_di_thua  = safe_len(df_mis_di_thua)
+    n_npo_den_thua = safe_len(df_npo_den_thua)
+    n_mis_den_thua = safe_len(df_mis_den_thua)
+    n_timeout      = safe_len(df_timeout)
+    timeout_tien   = safe_sum(df_timeout, 'SO_TIEN')
 
-    n_npo_di  = n_di_khop  + safe_len(df_npo_di_thua)
-    n_mis_di  = n_di_khop  + safe_len(df_mis_di_thua)
-    n_npo_den = n_den_khop + safe_len(df_npo_den_thua)
-    n_mis_den = n_den_khop + safe_len(df_mis_den_thua)
-    n_timeout = safe_len(df_timeout)
-    timeout_tien = safe_sum(df_timeout, 'SO_TIEN')
+    n_npo_di  = n_di_khop  + n_npo_di_thua
+    n_mis_di  = n_di_khop  + n_mis_di_thua              # MIS sau khi bo timeout
+    n_npo_den = n_den_khop + n_npo_den_thua
+    n_mis_den = n_den_khop + n_mis_den_thua
+    n_mis_di_total = n_di_khop + n_mis_di_thua + n_timeout  # MIS truoc khi bo timeout
 
-    # --- Tinh truoc cac chi so phu cho CANH BAO ---
+    # --- Tinh cac so lieu CANH BAO ---
     n_tpay_thua = 0
     if df_mis_di_thua is not None and 'TRANG_THAI_LENH' in df_mis_di_thua.columns:
         n_tpay_thua = int((df_mis_di_thua['TRANG_THAI_LENH'] == 'TPAY').sum())
 
     overlap_di = 0
-    if (df_npo_di_thua is not None and len(df_npo_di_thua) > 0
+    if (df_npo_di_thua is not None and n_npo_di_thua > 0
             and {'TRBRCD', 'CRAMOUNT'} <= set(df_npo_di_thua.columns)
-            and df_mis_di_thua is not None and len(df_mis_di_thua) > 0
+            and df_mis_di_thua is not None and n_mis_di_thua > 0
             and {'CHI_NHANH', 'SO_TIEN'} <= set(df_mis_di_thua.columns)):
         npo_pairs = set(zip(
             df_npo_di_thua['TRBRCD'].astype(str).str.strip(),
@@ -45,9 +49,9 @@ def phan_tich(df_npo_di_thua, df_mis_di_thua, df_npo_den_thua, df_mis_den_thua,
         overlap_di = len(npo_pairs & mis_pairs)
 
     overlap_den = 0
-    if (df_npo_den_thua is not None and len(df_npo_den_thua) > 0
+    if (df_npo_den_thua is not None and n_npo_den_thua > 0
             and {'TRBRCD', 'DRAMOUNT'} <= set(df_npo_den_thua.columns)
-            and df_mis_den_thua is not None and len(df_mis_den_thua) > 0
+            and df_mis_den_thua is not None and n_mis_den_thua > 0
             and {'CHI_NHANH', 'SO_TIEN'} <= set(df_mis_den_thua.columns)):
         npo_den_pairs = set(zip(
             df_npo_den_thua['TRBRCD'].astype(str).str.strip(),
@@ -69,17 +73,17 @@ def phan_tich(df_npo_di_thua, df_mis_di_thua, df_npo_den_thua, df_mis_den_thua,
                          f'{n_tpay_thua:,} lenh',
                          'Kiem tra MIS_DI_THUA, loc TRANG_THAI_LENH = TPAY'))
     if n_timeout > 0:
-        warnings.append((f'[!] Timeout khong kenh: {n_timeout} lenh',
+        warnings.append((f'[!] Timeout khong kenh: {n_timeout:,} lenh',
                          f'{timeout_tien:,} VND',
                          'Lenh TPAY vuot GW — xem sheet TIMEOUT_KHONG_KENH'))
     if overlap_di > 0:
         warnings.append((f'[!] DI: {overlap_di:,} cap (CN+TIEN) co ca 2 phia nhung TRACE khac',
                          f'{overlap_di:,} cap',
-                         'Cung chi nhanh + so tien nhung TRACE khac — co the sai so trace'))
+                         'Co the sai so trace — can kiem tra thu cong'))
     if overlap_den > 0:
         warnings.append((f'[!] DEN: {overlap_den:,} cap (CN+TIEN) co ca 2 phia nhung TRACE khac',
                          f'{overlap_den:,} cap',
-                         'Cung chi nhanh + so tien nhung TRACE khac — co the sai so trace'))
+                         'Co the sai so trace — can kiem tra thu cong'))
 
     if warnings:
         add('--- CANH BAO TU DONG ---', '', '', 'header')
@@ -87,13 +91,28 @@ def phan_tich(df_npo_di_thua, df_mis_di_thua, df_npo_den_thua, df_mis_den_thua,
             add(w[0], w[1], w[2], 'canh_bao')
         add('', '', '', '')
 
-    # ═══ Section 1: KPI ═══
-    add('--- 1. CHI TIEU CHAT LUONG DOI CHIEU ---', '', '', 'header')
-    add('Ty le khop NPO_DI (%)',  pct(n_di_khop,  n_npo_di),  f'{n_di_khop:,} / {n_npo_di:,}')
-    add('Ty le khop MIS_DI (%)',  pct(n_di_khop,  n_mis_di),  f'{n_di_khop:,} / {n_mis_di:,}')
-    add('Ty le khop NPO_DEN (%)', pct(n_den_khop, n_npo_den), f'{n_den_khop:,} / {n_npo_den:,}')
-    add('Ty le khop MIS_DEN (%)', pct(n_den_khop, n_mis_den), f'{n_den_khop:,} / {n_mis_den:,}')
-    add('Timeout khong di kenh',  f'{n_timeout:,} lenh', f'{timeout_tien:,} VND')
+    # ═══ Section 1: KET QUA DOI CHIEU (so tuyet doi) ═══
+    add('--- 1. KET QUA DOI CHIEU ---', '', '', 'header')
+    add('  ', 'CHIEU DI', 'CHIEU DEN', 'sub_header')
+    add('  So giao dich khop',
+        f'{n_di_khop:,}',
+        f'{n_den_khop:,}')
+    add('  NPO chua khop (GL02 thua)',
+        f'{n_npo_di_thua:,}',
+        f'{n_npo_den_thua:,}')
+    add('  MIS chua khop',
+        f'{n_mis_di_thua:,}',
+        f'{n_mis_den_thua:,}')
+    add('  Timeout khong kenh (TPAY)',
+        f'{n_timeout:,} lenh',
+        f'{timeout_tien:,} VND')
+    add('  ---', '', '')
+    add('  Tong NPO (can doi: khop + thua)',
+        f'{n_npo_di:,}',
+        f'{n_npo_den:,}')
+    add('  Tong MIS (can doi: khop + thua + TO)',
+        f'{n_mis_di_total:,}',
+        f'{n_mis_den:,}')
     add('', '', '', '')
 
     # ═══ Section 2: TONG SO TIEN CHUA KHOP ═══
@@ -104,15 +123,15 @@ def phan_tich(df_npo_di_thua, df_mis_di_thua, df_npo_den_thua, df_mis_den_thua,
 
     add('--- 2. TONG SO TIEN CHUA KHOP (VND) ---', '', '', 'header')
     add('  ', 'So giao dich', 'So tien (VND)', 'sub_header')
-    add('  NPO_DI thua (GL02 DI chua khop)',  f'{safe_len(df_npo_di_thua):,}',  f'{s_npo_di_thua:,}')
-    add('  MIS_DI thua (MIS DI chua khop)',   f'{safe_len(df_mis_di_thua):,}',  f'{s_mis_di_thua:,}')
-    add('  NPO_DEN thua (GL02 DEN chua khop)',f'{safe_len(df_npo_den_thua):,}', f'{s_npo_den_thua:,}')
-    add('  MIS_DEN thua (MIS DEN chua khop)', f'{safe_len(df_mis_den_thua):,}', f'{s_mis_den_thua:,}')
+    add('  NPO_DI thua (GL02 DI chua khop)',  f'{n_npo_di_thua:,}',  f'{s_npo_di_thua:,}')
+    add('  MIS_DI thua (MIS DI chua khop)',   f'{n_mis_di_thua:,}',  f'{s_mis_di_thua:,}')
+    add('  NPO_DEN thua (GL02 DEN chua khop)',f'{n_npo_den_thua:,}', f'{s_npo_den_thua:,}')
+    add('  MIS_DEN thua (MIS DEN chua khop)', f'{n_mis_den_thua:,}', f'{s_mis_den_thua:,}')
     add('', '', '', '')
 
     # ═══ Section 3: MIS_DI_THUA breakdown ═══
     add('--- 3. PHAN TICH MIS_DI_THUA (theo loai lenh) ---', '', '', 'header')
-    total_mis_di = safe_len(df_mis_di_thua)
+    total_mis_di = n_mis_di_thua
     if total_mis_di > 0 and df_mis_di_thua is not None and 'TRANG_THAI_LENH' in df_mis_di_thua.columns:
         _NOTE_DI = {
             'SCNL': 'Da thanh toan — co the thuoc session khac, binh thuong',
@@ -121,8 +140,7 @@ def phan_tich(df_npo_di_thua, df_mis_di_thua, df_npo_den_thua, df_mis_den_thua,
         }
         for tt, cnt in df_mis_di_thua['TRANG_THAI_LENH'].value_counts().items():
             typ = 'canh_bao' if str(tt) in ('TPAY', 'TXRT') and cnt > 0 else 'data'
-            add(f'  {tt}', f'{cnt:,}  ({cnt / total_mis_di * 100:.1f}%)',
-                _NOTE_DI.get(str(tt), ''), typ)
+            add(f'  {tt}', f'{cnt:,}', _NOTE_DI.get(str(tt), ''), typ)
     else:
         add('  (Khong co MIS_DI_THUA)')
     add('', '', '', '')
@@ -142,7 +160,7 @@ def phan_tich(df_npo_di_thua, df_mis_di_thua, df_npo_den_thua, df_mis_den_thua,
 
     # ═══ Section 5: NPO_DI_THUA analysis ═══
     add('--- 5. PHAN TICH NPO_DI_THUA — GL02 DI CHUA KHOP (top 10 theo so tien) ---', '', '', 'header')
-    if df_npo_di_thua is not None and len(df_npo_di_thua) > 0 and 'TRBRCD' in df_npo_di_thua.columns:
+    if df_npo_di_thua is not None and n_npo_di_thua > 0 and 'TRBRCD' in df_npo_di_thua.columns:
         add('  CHI_NHANH', 'So giao dich', 'Tong CRAMOUNT (VND)', 'sub_header')
         grp = df_npo_di_thua.groupby('TRBRCD')
         cnt_npo_di = grp.size()
@@ -162,10 +180,10 @@ def phan_tich(df_npo_di_thua, df_mis_di_thua, df_npo_den_thua, df_mis_den_thua,
 
     # ═══ Section 6: MIS_DEN_THUA breakdown ═══
     add('--- 6. PHAN TICH MIS_DEN_THUA (theo loai lenh) ---', '', '', 'header')
-    total_mis_den = safe_len(df_mis_den_thua)
+    total_mis_den = n_mis_den_thua
     if total_mis_den > 0 and df_mis_den_thua is not None and 'TRANG_THAI_LENH' in df_mis_den_thua.columns:
         for tt, cnt in df_mis_den_thua['TRANG_THAI_LENH'].value_counts().items():
-            add(f'  {tt}', f'{cnt:,}  ({cnt / total_mis_den * 100:.1f}%)')
+            add(f'  {tt}', f'{cnt:,}', '')
         if overlap_den > 0:
             add('  Cap (CN+TIEN) co mat o ca 2 phia', f'{overlap_den:,}',
                 'Cung chi nhanh + so tien nhung TRACE khac — Nen kiem tra')
@@ -188,7 +206,7 @@ def phan_tich(df_npo_di_thua, df_mis_di_thua, df_npo_den_thua, df_mis_den_thua,
 
     # ═══ Section 8: NPO_DEN_THUA analysis ═══
     add('--- 8. PHAN TICH NPO_DEN_THUA — GL02 DEN CHUA KHOP (top 10 theo so tien) ---', '', '', 'header')
-    if df_npo_den_thua is not None and len(df_npo_den_thua) > 0 and 'TRBRCD' in df_npo_den_thua.columns:
+    if df_npo_den_thua is not None and n_npo_den_thua > 0 and 'TRBRCD' in df_npo_den_thua.columns:
         add('  CHI_NHANH', 'So giao dich', 'Tong DRAMOUNT (VND)', 'sub_header')
         grp_den = df_npo_den_thua.groupby('TRBRCD')
         cnt_npo_den = grp_den.size()

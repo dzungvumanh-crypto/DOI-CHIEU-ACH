@@ -438,14 +438,25 @@ def t01_pipeline_200k_rows():
         df = _read_sheet(o, sheet)
         assert_eq(len(df), exp, f'Sheet {sheet}')
 
-    # Ty le khop DI = 40k/(40k+10k) = 80.0%
-    # Ty le khop DEN = 25k/(25k+5k) = 83.33%
+    # So lieu TUYET DOI — khong co ty le %
+    # DI: 40k khop / (40k NPO_DI_THUA=10k) => Tong NPO_DI=50k, Tong MIS_DI (khop+thua+TO)
+    # DEN: 25k khop / (25k NPO_DEN_THUA=5k) => Tong NPO_DEN=30k
     df_tk = _read_sheet(o, 'TONG_KET')
     vals  = dict(zip(df_tk.iloc[:, 0].astype(str), df_tk.iloc[:, 1].astype(str)))
-    ty_di  = float(vals.get('Ty le khop DI (%)',  '0').replace(',', '.'))
-    ty_den = float(vals.get('Ty le khop DEN (%)', '0').replace(',', '.'))
-    assert abs(ty_di  - 80.0)  < 0.01, f'Ty le DI:  {ty_di}  (expected 80.0)'
-    assert abs(ty_den - 83.33) < 0.01, f'Ty le DEN: {ty_den} (expected 83.33)'
+
+    # Khong co dong ty le %
+    assert 'Ty le khop DI (%)'  not in vals, 'TONG_KET khong duoc co dong ty le % DI'
+    assert 'Ty le khop DEN (%)' not in vals, 'TONG_KET khong duoc co dong ty le % DEN'
+
+    def get_int(key):
+        raw = vals.get(key, '').replace(',', '').strip()
+        return int(raw) if raw.lstrip('-').isdigit() else None
+
+    n_tong_npo_di = get_int('Tong NPO_DI (can doi)')
+    n_tong_npo_den_rows = df_tk[df_tk.iloc[:, 0].astype(str) == 'Tong NPO_DEN (can doi)']
+    n_tong_npo_den = int(n_tong_npo_den_rows.iloc[0, 1].replace(',', '')) if len(n_tong_npo_den_rows) > 0 else None
+    assert_eq(n_tong_npo_di,  N_MATCH_DI + N_NPO_DI_THUA, 'Tong NPO_DI (can doi)')
+    assert_eq(n_tong_npo_den, N_MATCH_DEN + N_NPO_DEN_THUA, 'Tong NPO_DEN (can doi)')
 
     # TXRT fix: TPAY CHI_NHANH=9099, SO_TIEN=777777 phai la TIMEOUT
     df_to = _read_sheet(o, 'TIMEOUT_KHONG_KENH')
@@ -628,30 +639,65 @@ def t09_gw_rong():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# T10: PHAN_TICH — kiem tra phan tram chinh xac
+# T10: TONG_KET so tuyet doi — can doi chinh xac (khong co % trong output)
 # ═══════════════════════════════════════════════════════════════════════════════
-def t10_phan_tich_phan_tram():
+def t10_so_lieu_tuyet_doi():
     """
-    3 GL02 DI khop / 5 GL02 DI = 60%.
-    3 GL02 DEN khop / 4 GL02 DEN = 75%.
+    DI:  5 NPO_DI, 3 MIS_DI khop, 2 NPO_DI_THUA, 0 MIS_DI_THUA
+    DEN: 4 NPO_DEN, 3 MIS_DEN khop, 1 NPO_DEN_THUA, 0 MIS_DEN_THUA
+    Xac nhan so TUYET DOI tu TONG_KET — khong co dong ty le %, phai can doi chinh xac.
     """
     gl02 = []
-    for t in range(1, 6):   # 5 DI
+    for t in range(1, 6):    # 5 NPO_DI
         gl02.append(_base_gl02_row(t, cramount=100_000))
-    for t in range(10, 14): # 4 DEN
+    for t in range(10, 14):  # 4 NPO_DEN
         gl02.append(_base_gl02_row(t, cramount=0, dramount=200_000))
 
-    mis_di  = [_base_mis_di_row(t, 'SCNL', 100_000) for t in range(1, 4)]   # 3 khop
-    mis_den = [_base_mis_den_row(t, 200_000) for t in range(10, 13)]         # 3 khop DEN
+    mis_di  = [_base_mis_di_row(t, 'SCNL', 100_000) for t in range(1, 4)]  # 3 khop
+    mis_den = [_base_mis_den_row(t, 200_000) for t in range(10, 13)]        # 3 khop DEN
     gw = [_base_gw_row(t, 100_000) for t in range(1, 4)]
 
     _, o = _run_test_case({'gl02': gl02, 'gw': gw, 'mis_di': mis_di, 'mis_den': mis_den})
     df_tk = _read_sheet(o, 'TONG_KET')
     vals = dict(zip(df_tk.iloc[:, 0].astype(str), df_tk.iloc[:, 1].astype(str)))
-    ty_le_di  = float(vals.get('Ty le khop DI (%)',  '0').replace(',', '.'))
-    ty_le_den = float(vals.get('Ty le khop DEN (%)', '0').replace(',', '.'))
-    assert abs(ty_le_di  - 60.0) < 0.1, f'Ty le DI  = {ty_le_di}  (expected 60.0)'
-    assert abs(ty_le_den - 75.0) < 0.1, f'Ty le DEN = {ty_le_den} (expected 75.0)'
+
+    def get_int(key):
+        raw = vals.get(key, '').replace(',', '').strip()
+        return int(raw) if raw.lstrip('-').isdigit() else None
+
+    # Kiem tra khong co dong ty le % trong output
+    assert 'Ty le khop DI (%)' not in vals, 'TONG_KET khong duoc co dong ty le %'
+    assert 'Ty le khop DEN (%)' not in vals, 'TONG_KET khong duoc co dong ty le %'
+
+    # DI: so TUYET DOI
+    n_di_khop      = get_int('So giao dich khop (MIS)')
+    n_npo_di_thua  = get_int('NPO_DI thua')
+    n_mis_di_thua  = get_int('MIS_DI thua')
+    n_timeout      = get_int('Timeout khong kenh')
+    n_tong_npo_di  = get_int('Tong NPO_DI (can doi)')
+    n_tong_mis_di  = get_int('Tong MIS_DI (can doi)')
+
+    assert_eq(n_di_khop, 3, 'MIS_DI_KHOP')
+    # Chieu DI - TONG_KET co 2 dong "So giao dich khop (MIS)" (DI va DEN) nen chi lay lan dau
+    # -> kiem tra qua NPO_THUA va MIS_THUA thay the
+    assert_eq(n_timeout, 0, 'Timeout phai = 0')
+    # Can doi NPO_DI: 3 khop + 2 thua = 5
+    assert_eq(n_tong_npo_di, 5, 'Tong NPO_DI (can doi) = 5')
+    # Can doi MIS_DI: 3 khop + 0 thua + 0 timeout = 3
+    assert_eq(n_tong_mis_di, 3, 'Tong MIS_DI (can doi) = 3')
+
+    # DEN: doc tu TONG_KET (doc toan bo de lay hang DEN)
+    df_den_rows = df_tk[df_tk.iloc[:, 0].astype(str).str.contains('DEN', na=False)]
+    den_vals = dict(zip(df_den_rows.iloc[:, 0].astype(str), df_den_rows.iloc[:, 1].astype(str)))
+
+    def get_int_den(key):
+        raw = den_vals.get(key, '').replace(',', '').strip()
+        return int(raw) if raw.lstrip('-').isdigit() else None
+
+    n_tong_npo_den = get_int_den('Tong NPO_DEN (can doi)')
+    n_tong_mis_den = get_int_den('Tong MIS_DEN (can doi)')
+    assert_eq(n_tong_npo_den, 4, 'Tong NPO_DEN (can doi) = 4')
+    assert_eq(n_tong_mis_den, 3, 'Tong MIS_DEN (can doi) = 3')
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -824,7 +870,7 @@ if __name__ == '__main__':
     run('T07: GL02 khong co cot LOCAC',             t07_gl02_no_locac_column)
     run('T08: MIS_DI rong sau pre-filter',          t08_mis_di_rong_sau_prefilter)
     run('T09: GW rong — timeout=0, cap=0',          t09_gw_rong)
-    run('T10: PHAN_TICH ty le phan tram',           t10_phan_tich_phan_tram)
+    run('T10: So lieu tuyet doi — can doi, khong co %', t10_so_lieu_tuyet_doi)
     run('T11: TXRT chi tinh session hien tai',      t11_txrt_session_filter)
     run('T12: Null-session TPAY in/out range',      t12_null_session_tpay)
     run('T13: GW dedup theo MSGREF',                t13_gw_dedup)
