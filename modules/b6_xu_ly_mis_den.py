@@ -39,7 +39,7 @@ def _doc_zip(zip_path: str, session_filter: str = None) -> pd.DataFrame:
                                 chunksize=100_000, low_memory=False,
                             ):
                                 if 'SESSION' in chunk.columns:
-                                    sess = (chunk['SESSION'].astype(str)
+                                    sess = (chunk['SESSION'].fillna('').astype(object).astype(str)
                                             .str.strip().str.lstrip("'"))
                                     mask = sess.isin({sid} | _NULL_SESSION)
                                     chunk = chunk[mask]
@@ -78,7 +78,7 @@ def xu_ly_mis_den(zip_paths: List[str], session_id: str, ngay_doi_chieu: datetim
     )
 
     # Chuan hoa SESSION
-    df['SESSION'] = df['SESSION'].astype(str).str.strip().str.lstrip("'")
+    df['SESSION'] = df['SESSION'].fillna('').astype(object).astype(str).str.strip().str.lstrip("'")
     df['SESSION_NULL'] = df['SESSION'].isin(['', 'nan', 'None', 'NaN'])
 
     ngay_ts = pd.Timestamp(ngay_doi_chieu.date())
@@ -99,7 +99,7 @@ def xu_ly_mis_den(zip_paths: List[str], session_id: str, ngay_doi_chieu: datetim
     df['SO_TIEN'] = pd.to_numeric(df['SO_TIEN'], errors='coerce').fillna(0).astype('int64')
 
     # TRACE: bo dau nháy don roi bo leading zero
-    df['TRACE'] = df['TRACE'].astype(str).str.strip().str.lstrip("'").str.lstrip('0')
+    df['TRACE'] = df['TRACE'].fillna('').astype(object).astype(str).str.strip().str.lstrip("'").str.lstrip('0')
 
     # KEY_DEN_HUB
     df['KEY_DEN_HUB'] = df['TRACE'] + df['SO_TIEN'].astype(str)

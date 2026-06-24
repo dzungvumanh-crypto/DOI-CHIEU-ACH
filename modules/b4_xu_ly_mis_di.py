@@ -44,7 +44,7 @@ def _doc_zip(zip_path: str, session_filter: str = None) -> pd.DataFrame:
                                 chunksize=100_000, low_memory=False,
                             ):
                                 if 'SESSION' in chunk.columns:
-                                    sess = (chunk['SESSION'].astype(str)
+                                    sess = (chunk['SESSION'].fillna('').astype(object).astype(str)
                                             .str.strip().str.lstrip("'"))
                                     mask = sess.isin({sid} | _NULL_SESSION)
                                     chunk = chunk[mask]
@@ -67,9 +67,10 @@ def _doc_zip(zip_path: str, session_filter: str = None) -> pd.DataFrame:
 
 def _tao_so_trace(df: pd.DataFrame) -> pd.Series:
     """SE_TRACE neu co gia tri, nguoc lai dung TRACE. Bo dau nháy don va leading zero."""
-    se = df['SE_TRACE'].astype(str).str.strip().str.lstrip("'").str.lstrip('0')
-    tr = df['TRACE'].astype(str).str.strip().str.lstrip("'").str.lstrip('0')
-    has_se = ~(se.isin(['', 'nan', 'None', 'NaN']))
+    # fillna('') + astype(object) tranh pandas 3.x StringDtype dung pd.NA (isin tra False cho pd.NA)
+    se = df['SE_TRACE'].fillna('').astype(object).astype(str).str.strip().str.lstrip("'").str.lstrip('0')
+    tr = df['TRACE'].fillna('').astype(object).astype(str).str.strip().str.lstrip("'").str.lstrip('0')
+    has_se = se.ne('')
     return se.where(has_se, tr)
 
 
@@ -133,7 +134,7 @@ def xu_ly_mis_di(zip_paths: List[str], dict_gw_count: Dict[str, int], session_id
     )
 
     # Chuan hoa SESSION
-    df['SESSION'] = df['SESSION'].astype(str).str.strip().str.lstrip("'")
+    df['SESSION'] = df['SESSION'].fillna('').astype(object).astype(str).str.strip().str.lstrip("'")
     df['SESSION_NULL'] = df['SESSION'].isin(['', 'nan', 'None', 'NaN'])
 
     # SCNL: SESSION = session_id
