@@ -854,12 +854,55 @@ def t16_customer_ach_filter():
     assert count == 5, f'NPO_DI sau filter phai la 5, got {count} (non-ACH bi giu lai?)'
 
 
+def t17_timeout_msgref_check():
+    """
+    TPAY vuot slot GW nhung MSGREF xuat hien trong GW → thuc ra da di kenh.
+    Pipeline phai chuyen TPAY nay tu TIMEOUT_KHONG_KENH vao MIS_DI_FINAL → khop NPO.
+
+    Setup:
+      NPO: 4 rows (t=1..4)
+      GW:  3 slots (KEY '1101100000') + 1 row extra MSGREF='GW0000000099' (BRCD='9999')
+      MIS: 3 SCNL (t=1..3) + 1 TPAY (t=4, MSGREF='GW0000000099')
+    Ket qua mong doi:
+      TIMEOUT = 0  (TPAY t=4 co MSGREF trong GW → duoc chuyen vao MIS_DI_FINAL)
+      KHOP    = 4  (ca 4 NPO rows deu khop MIS)
+    """
+    gl02 = [_base_gl02_row(t, cramount=100_000) for t in range(1, 5)]   # NPO t=1..4
+    gw   = [_base_gw_row(t, 100_000) for t in range(1, 4)]              # 3 slots (t=1,2,3)
+    # Extra GW row: BRCD='9999' -> khong anh huong slot KEY '1101100000'
+    # nhung MSGREF='GW0000000099' de TPAY t=4 duoc rescue
+    gw_extra = {'No': 99, 'SessionId': SES, 'BRCD': '9999',
+                 'STTLMAMT': 1, 'MSGREF': 'GW0000000099', 'PrcFlg': 'OK',
+                 'TxDt': '15/06/2026', 'Status': 'SETTLED'}
+    gw.append(gw_extra)
+
+    mis_di = [_base_mis_di_row(t, 'SCNL', 100_000) for t in range(1, 4)]   # 3 SCNL
+    tpay_row = _base_mis_di_row(4, 'TPAY', 100_000)
+    tpay_row['MSGREF'] = 'GW0000000099'  # MSGREF khop voi GW extra row
+    mis_di.append(tpay_row)
+
+    mis_den = [_base_mis_den_row(100)]
+    _, o = _run_test_case({'gl02': gl02, 'gw': gw, 'mis_di': mis_di, 'mis_den': mis_den})
+    df_tong = _read_sheet(o, 'TONG_KET')
+
+    def _get_val(label_pat):
+        row = df_tong[df_tong.iloc[:, 0].astype(str).str.contains(label_pat, case=False, na=False)]
+        if len(row) == 0:
+            return 0
+        return int(str(row.iloc[0, 1]).replace(',', '').strip() or '0')
+
+    n_timeout = _get_val('Timeout khong kenh')
+    n_khop    = _get_val('So giao dich khop')
+    assert n_timeout == 0, f'TIMEOUT phai = 0 (TPAY duoc rescue), got {n_timeout}'
+    assert n_khop == 4,    f'KHOP phai = 4 (ca TPAY da di kenh duoc khop NPO), got {n_khop}'
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Main
 # ═══════════════════════════════════════════════════════════════════════════════
 if __name__ == '__main__':
     os.makedirs(TEST_DIR, exist_ok=True)
-    print(f'\nChay {16} test cases...\n')
+    print(f'\nChay {17} test cases...\n')
 
     run('T01: Pipeline 237k+ dong tu tao (vectorized)', t01_pipeline_200k_rows)
     run('T02: skip_file bug — dong dau LOCAC sai',  t02_skip_file_bug)
@@ -877,6 +920,7 @@ if __name__ == '__main__':
     run('T14: TRACE leading zero matching',         t14_trace_leading_zero)
     run('T15: CALD/ERPO/TPER bi loai hoan toan',   t15_excl_trang_thai)
     run('T16: Filter CUSTOMER ACH (loc non-ACH)',   t16_customer_ach_filter)
+    run('T17: TIMEOUT MSGREF check — TPAY da di kenh duoc rescue', t17_timeout_msgref_check)
 
     passed = sum(1 for _, ok, _ in results if ok)
     failed = sum(1 for _, ok, _ in results if not ok)

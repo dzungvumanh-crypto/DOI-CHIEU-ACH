@@ -98,9 +98,12 @@ def _get_timeout_indices(df_tpay: pd.DataFrame, df_non_tpay: pd.DataFrame,
 
 
 def xu_ly_mis_di(zip_paths: List[str], dict_gw_count: Dict[str, int], session_id: str,
+                 df_gw: pd.DataFrame = None,
                  tpay_tu: datetime = None, tpay_den: datetime = None, log_callback=None):
     """
     Doc 2 zip MIS_DI song song, xu ly va tra ve (df_mis_di_final, df_timeout_khong_kenh).
+    df_gw: DataFrame GW da loc (tu b3) — dung de check MSGREF cua TPAY timeout.
+           TPAY co MSGREF trong GW thi thuc ra da di kenh → dua ve MIS_DI_FINAL.
     tpay_tu / tpay_den: neu truyen thi dung gia tri nay (thread-safe cho Web UI);
                         neu None thi lay tu config (CLI mode).
     """
@@ -175,8 +178,30 @@ def xu_ly_mis_di(zip_paths: List[str], dict_gw_count: Dict[str, int], session_id
     df_tpay_in_mis = df_mis_di[df_mis_di['TRANG_THAI_LENH'] == 'TPAY']
     timeout_idx = _get_timeout_indices(df_tpay_in_mis, df_non_tpay_in_mis, dict_gw_count)
 
-    df_timeout      = df_mis_di.loc[timeout_idx].copy()
-    df_mis_di_final = df_mis_di[~df_mis_di.index.isin(timeout_idx)].copy()
+    df_timeout_candidates = df_mis_di.loc[timeout_idx].copy()
+    df_mis_di_final       = df_mis_di[~df_mis_di.index.isin(timeout_idx)].copy()
+
+    # MSGREF check: TPAY co MSGREF trong GW thi thuc ra da di kenh → dua ve MIS_DI_FINAL
+    _QUOTE = "'"
+    n_rescued = 0
+    if df_gw is not None and 'MSGREF' in df_gw.columns and len(df_timeout_candidates) > 0:
+        gw_msgref_set = set(
+            df_gw['MSGREF'].fillna('').astype(object).astype(str)
+            .str.strip().str.lstrip(_QUOTE)
+        )
+        tpay_msgref = (
+            df_timeout_candidates['MSGREF'].fillna('').astype(object).astype(str)
+            .str.strip().str.lstrip(_QUOTE)
+        )
+        mask_in_gw = tpay_msgref.isin(gw_msgref_set)
+        df_rescued  = df_timeout_candidates[mask_in_gw]
+        df_timeout  = df_timeout_candidates[~mask_in_gw]
+        if len(df_rescued) > 0:
+            df_mis_di_final = pd.concat([df_mis_di_final, df_rescued]).reset_index(drop=True)
+            n_rescued = len(df_rescued)
+            _log(f'[B4] MSGREF check: {n_rescued} TPAY co MSGREF trong GW → chuyen vao MIS_DI_FINAL (da di kenh)')
+    else:
+        df_timeout = df_timeout_candidates
 
     _log(
         f'[B4] MIS_DI → tong truoc timeout: {len(df_mis_di):,} | '

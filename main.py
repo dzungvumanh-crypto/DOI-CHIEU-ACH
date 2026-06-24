@@ -465,7 +465,7 @@ def main_from_dir(input_dir: str, output_dir: str,
         f_mis_di = ex.submit(
             xu_ly_mis_di,
             mis_di_files, dict_gw_count, session_id,
-            tpay_tu, tpay_den, log_callback,
+            df_gw_raw, tpay_tu, tpay_den, log_callback,
         )
 
         npo_di, npo_den          = f_gl02.result()
