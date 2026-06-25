@@ -1,5 +1,10 @@
+import sys as _sys, os as _os
+_ROOT = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+if _ROOT not in _sys.path:
+    _sys.path.insert(0, _ROOT)
+
 import io
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor
 from typing import List
 from datetime import datetime
 import pyzipper
@@ -84,8 +89,8 @@ def xu_ly_mis_den(zip_paths: List[str], session_id: str, ngay_doi_chieu: datetim
     """
     sid = str(session_id)
 
-    # Doc 2 ZIP song song, loc session ngay trong qua trinh doc
-    with ThreadPoolExecutor(max_workers=2) as ex:
+    # Doc 2 ZIP song song (multiprocess — bypass GIL cho AES decrypt)
+    with ProcessPoolExecutor(max_workers=2) as ex:
         futures = [ex.submit(_doc_zip, p, sid) for p in zip_paths]
         frames  = [f.result() for f in futures]
     df = pd.concat(frames, ignore_index=True)
