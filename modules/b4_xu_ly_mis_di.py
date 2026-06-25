@@ -1,10 +1,5 @@
-import sys as _sys, os as _os
-_ROOT = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
-if _ROOT not in _sys.path:
-    _sys.path.insert(0, _ROOT)
-
 import io
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List
 from datetime import datetime
 import numpy as np
@@ -123,11 +118,11 @@ def _get_timeout_indices(df_tpay: pd.DataFrame, df_non_tpay: pd.DataFrame,
 
 
 def _doc_mis_di_raw(zip_paths: List[str], session_id: str, log_callback=None) -> pd.DataFrame:
-    """Doc 2 ZIP MIS_DI song song (multiprocess — bypass GIL cho AES decrypt)."""
+    """Doc 2 ZIP MIS_DI song song, tra ve DataFrame thu (chua xu ly). Dung cho P7 parallel I/O."""
     _log = log_callback or print
-    _log('[B4] Doc MIS_DI tu 2 ZIP (multiprocess)...')
+    _log('[B4] Doc MIS_DI tu 2 ZIP...')
     sid = str(session_id)
-    with ProcessPoolExecutor(max_workers=2) as ex:
+    with ThreadPoolExecutor(max_workers=2) as ex:
         futures = [ex.submit(_doc_zip, p, sid) for p in zip_paths]
         frames  = [f.result() for f in futures]
     return pd.concat(frames, ignore_index=True)
