@@ -20,12 +20,13 @@ import config
 from modules.b1_doc_session   import doc_session
 from modules.b2_xu_ly_gl02    import xu_ly_gl02
 from modules.b3_xu_ly_gw      import xu_ly_gw
-from modules.b4_xu_ly_mis_di  import xu_ly_mis_di
+from modules.b4_xu_ly_mis_di  import xu_ly_mis_di, _doc_mis_di_raw, _process_mis_di
 from modules.b5_doi_chieu_di  import doi_chieu_di
 from modules.b6_xu_ly_mis_den import xu_ly_mis_den
 from modules.b7_doi_chieu_den import doi_chieu_den
 from modules.b8_phan_tich    import phan_tich
 
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 
@@ -52,7 +53,7 @@ _COLS_MIS_DEN = [
 ]
 
 # Nguong dong: sheet lon hon se xuat ra CSV thay vi ghi vao Excel
-CSV_THRESHOLD = 50_000
+CSV_THRESHOLD = 15_000
 
 
 def _clean(df: pd.DataFrame, cols: list, label: str = '') -> pd.DataFrame:
@@ -63,7 +64,7 @@ def _clean(df: pd.DataFrame, cols: list, label: str = '') -> pd.DataFrame:
     missing  = [c for c in cols if c not in df.columns]
     if missing:
         print(f'[WARN] _clean({label}): thieu cot {missing}')
-    return df[existing].copy()
+    return df[existing]
 
 
 def _tong_tien(df: pd.DataFrame, col: str) -> int:
@@ -106,9 +107,10 @@ def _tao_cap_cn_tien(mis_di_final, df_timeout, dict_gw_count):
     else:
         cnt['SO_TIMEOUT'] = 0
 
-    ref = df_all.drop_duplicates(subset=[cn_col])
-    cnt['CHI_NHANH'] = cnt[cn_col].map(ref.set_index(cn_col)['CHI_NHANH'].to_dict())
-    cnt['SO_TIEN']   = cnt[cn_col].map(ref.set_index(cn_col)['SO_TIEN'].to_dict())
+    ref    = df_all.drop_duplicates(subset=[cn_col])
+    lookup = ref.set_index(cn_col)[['CHI_NHANH', 'SO_TIEN']]
+    cnt['CHI_NHANH'] = cnt[cn_col].map(lookup['CHI_NHANH'].to_dict())
+    cnt['SO_TIEN']   = cnt[cn_col].map(lookup['SO_TIEN'].to_dict())
 
     result = cnt[cnt['CHENH_LECH'] > 0][
         ['CHI_NHANH', 'SO_TIEN', 'COUNT_MIS', 'COUNT_GW', 'CHENH_LECH', 'SO_TIMEOUT']
@@ -177,8 +179,8 @@ def _viet_sheet(workbook, worksheet, df: pd.DataFrame, header_color: str):
         worksheet.set_column(col_idx, col_idx, width)
         worksheet.write(0, col_idx, str(col_name), fmt_header)
 
-    rows = df.fillna('').values.tolist()
-    for row_idx, row in enumerate(rows, start=1):
+    df_filled = df.fillna('')
+    for row_idx, row in enumerate(df_filled.itertuples(index=False, name=None), start=1):
         worksheet.write_row(row_idx, 0, row, fmt_cell)
 
 
@@ -266,9 +268,13 @@ def _tim_file(input_dir: str, pattern: str) -> list:
 
 
 def _tim_gw_xlsx(input_dir: str) -> str:
-    """Tim file .xlsx co chua cot BRCD va SessionId (dau hieu cua file GW)."""
-    abs_dir = os.path.abspath(input_dir)
-    for f in glob.glob(os.path.join(abs_dir, '**', '*.xlsx'), recursive=True):
+    """Tim file .xlsx co chua cot BRCD va SessionId. Uu tien file co 'GW' trong ten."""
+    abs_dir  = os.path.abspath(input_dir)
+    all_xlsx = glob.glob(os.path.join(abs_dir, '**', '*.xlsx'), recursive=True)
+    candidates = [f for f in all_xlsx if 'GW' in os.path.basename(f).upper()]
+    if not candidates:
+        candidates = all_xlsx
+    for f in candidates:
         try:
             xl = pd.ExcelFile(f, engine='calamine')
             for sheet in xl.sheet_names:
@@ -303,7 +309,7 @@ def xuat_excel(output_path: str, session_id: str,
         ('MIS_DI_KHOP',        _clean(df_mis_di_khop,  _COLS_MIS_DI, 'MIS_DI_KHOP'),   _XANH_LA),
         ('NPO_DI_THUA',        _clean(df_npo_di_thua,  _COLS_NPO,    'NPO_DI_THUA'),   _DO),
         ('MIS_DI_THUA',        _clean(df_mis_di_thua,  _COLS_MIS_DI, 'MIS_DI_THUA'),   _DO),
-        ('TIMEOUT_KHONG_KENH', _clean(df_timeout,       _COLS_MIS_DI, 'TIMEOUT'),        _CAM),
+        ('TIMEOUT_KHONG_KENH', _clean(df_timeout, _COLS_MIS_DI + ['CO_TRONG_GW'], 'TIMEOUT'), _CAM),
         ('CAP_CN_TIEN',        df_cap_cn_tien,                                           _CAM),
         ('MIS_DEN_KHOP',       _clean(df_mis_den_khop, _COLS_MIS_DEN,'MIS_DEN_KHOP'),  _XANH_LA),
         ('NPO_DEN_THUA',       _clean(df_npo_den_thua, _COLS_NPO,    'NPO_DEN_THUA'),  _DO),
@@ -345,7 +351,10 @@ def xuat_excel(output_path: str, session_id: str,
                     len(df_mis_di_thua)  if df_mis_di_thua  is not None else 0,
                     _tong_tien(df_mis_di_thua,   'SO_TIEN'),
                     len(df_timeout)      if df_timeout      is not None else 0,
-                    _tong_tien(df_timeout,       'SO_TIEN'),
+                    (lambda s, n: f'{s} | {n} dien co MSGREF trong GW' if n > 0 else s)(
+                        _tong_tien(df_timeout, 'SO_TIEN'),
+                        int(df_timeout['CO_TRONG_GW'].sum()) if df_timeout is not None and 'CO_TRONG_GW' in df_timeout.columns else 0
+                    ),
                     len(df_mis_den_khop) if df_mis_den_khop is not None else 0,
                     _tong_tien(df_mis_den_khop,  'SO_TIEN'),
                     len(df_npo_den_thua) if df_npo_den_thua is not None else 0,
@@ -446,31 +455,37 @@ def main_from_dir(input_dir: str, output_dir: str,
         log('[CANCELLED] Nguoi dung da dung. Khong xu ly.')
         return None
 
-    # Phase 1: B2 + B3 + B6 song song; B4 khoi dong ngay khi B3 xong (khong cho B2/B6)
-    with ThreadPoolExecutor(max_workers=3) as ex:
-        f_gl02    = ex.submit(xu_ly_gl02,    gl02_files[0], log_callback)
-        f_gw      = ex.submit(xu_ly_gw,      gw_path, session_id, log_callback)
-        f_mis_den = ex.submit(xu_ly_mis_den, mis_den_files, session_id, ngay_dt, log_callback)
+    _t0 = time.perf_counter()
 
-        # B4 can dict_gw_count tu B3; bat dau ngay khi B3 xong, chay song song B2/B6 con lai
+    # Phase 1: B2 + B3 + B6 + B4_IO song song (4 luong); B4 xu ly sau khi B3 va B4_IO xong
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        f_gl02       = ex.submit(xu_ly_gl02,      gl02_files[0], log_callback)
+        f_gw         = ex.submit(xu_ly_gw,        gw_path, session_id, log_callback)
+        f_mis_den    = ex.submit(xu_ly_mis_den,   mis_den_files, session_id, ngay_dt, log_callback)
+        f_mis_di_raw = ex.submit(_doc_mis_di_raw, mis_di_files, session_id, log_callback)
+
+        # B3 can xong truoc de co dict_gw_count cho buoc xu ly B4
         dict_gw_count, df_gw_raw = f_gw.result()
 
-        # [CANCEL POINT 2] Sau khi B3 xong — truoc khi nop B4 (buoc nang nhat)
+        # [CANCEL POINT 2] Sau khi B3 xong — truoc khi xu ly B4
         if _cancelled(cancel_event):
-            log('[CANCELLED] Nguoi dung da dung sau B3. Cho B2/B6 hoan thanh...')
+            log('[CANCELLED] Nguoi dung da dung sau B3. Cho B2/B6/B4_IO hoan thanh...')
             f_gl02.result()
             f_mis_den.result()
+            f_mis_di_raw.result()
             return None
 
-        f_mis_di = ex.submit(
-            xu_ly_mis_di,
-            mis_di_files, dict_gw_count, session_id,
+        # B4_IO da chay song song voi B3 — lay ket qua (co the da xong roi) roi xu ly
+        df_mis_di_data           = f_mis_di_raw.result()
+        mis_di_final, df_timeout = _process_mis_di(
+            df_mis_di_data, dict_gw_count, session_id,
             df_gw_raw, tpay_tu, tpay_den, log_callback,
         )
 
-        npo_di, npo_den          = f_gl02.result()
-        df_mis_den               = f_mis_den.result()
-        mis_di_final, df_timeout = f_mis_di.result()
+        npo_di, npo_den = f_gl02.result()
+        df_mis_den      = f_mis_den.result()
+
+    log(f'[TIMING] Phase 1 IO: {time.perf_counter()-_t0:.1f}s')
 
     # [CANCEL POINT 3] Sau Phase 1 — truoc Phase 2 va ghi Excel
     if _cancelled(cancel_event):
@@ -480,6 +495,8 @@ def main_from_dir(input_dir: str, output_dir: str,
     # CAP_CN_TIEN: so sanh count MIS_TPAY vs GW per CN+TIEN (thay pivot thu cong)
     df_cap_cn_tien = _tao_cap_cn_tien(mis_di_final, df_timeout, dict_gw_count)
 
+    _t1 = time.perf_counter()
+
     # Phase 2: B5 + B7 song song
     with ThreadPoolExecutor(max_workers=2) as ex:
         f_di  = ex.submit(doi_chieu_di,  npo_di,  mis_di_final, log_callback)
@@ -488,10 +505,14 @@ def main_from_dir(input_dir: str, output_dir: str,
         df_mis_di_khop, df_npo_di_thua, df_mis_di_thua    = f_di.result()
         df_mis_den_khop, df_npo_den_thua, df_mis_den_thua = f_den.result()
 
+    log(f'[TIMING] Phase 2 doi chieu: {time.perf_counter()-_t1:.1f}s')
+
     # [CANCEL POINT 4] Truoc ghi Excel (buoc cuoi)
     if _cancelled(cancel_event):
         log('[CANCELLED] Nguoi dung da dung truoc khi ghi Excel.')
         return None
+
+    _t2 = time.perf_counter()
 
     # PHAN_TICH: dashboard chat luong doi chieu (thay phan tich thu cong)
     df_phan_tich = phan_tich(
@@ -511,6 +532,8 @@ def main_from_dir(input_dir: str, output_dir: str,
         df_phan_tich=df_phan_tich,
         log_callback=log_callback,
     )
+    log(f'[TIMING] Phase 3 Excel: {time.perf_counter()-_t2:.1f}s')
+    log(f'[TIMING] TONG: {time.perf_counter()-_t0:.1f}s')
     log(f'Hoan thanh: {output_path}')
     return output_path
 

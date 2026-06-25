@@ -2,35 +2,55 @@ import pandas as pd
 
 
 def _doc_mot_sheet(xl: pd.ExcelFile, sheet_name: str) -> pd.DataFrame:
-    """
-    Doc mot sheet GW, tu dong phat hien header row.
-    Tim dong dau tien chua gia tri 'BRCD' de dung lam header.
-    """
-    # Doc raw khong co header de tim vi tri header row
-    df_raw = pd.read_excel(xl, sheet_name=sheet_name, header=None, nrows=10,
+    """Doc mot sheet GW, tu dong phat hien header row. Doc toan bo 1 lan, khong doc 2 lan."""
+    df_raw = pd.read_excel(xl, sheet_name=sheet_name, header=None,
                            dtype=str, engine='calamine')
     header_row = 0
     for i, row in df_raw.iterrows():
         if 'BRCD' in row.values:
             header_row = i
             break
-
-    # Doc lai voi dung header row
-    df = pd.read_excel(xl, sheet_name=sheet_name, header=header_row,
-                       dtype=str, engine='calamine')
-    df.columns = [str(c).strip() for c in df.columns]
+    df = df_raw.iloc[header_row + 1:].reset_index(drop=True)
+    df.columns = [str(c).strip() for c in df_raw.iloc[header_row]]
     return df
+
+
+def _sheet_co_session(xl: pd.ExcelFile, sheet_name: str, session_id: str) -> bool:
+    """Peek 60 dong dau de kiem tra sheet co chua SessionId can tim khong.
+    Tranh doc ca trieu dong khi phan lon sheets khong thuoc session hien tai."""
+    try:
+        df_peek = pd.read_excel(xl, sheet_name=sheet_name, header=None,
+                                nrows=60, dtype=str, engine='calamine')
+    except Exception:
+        return False
+    for i, row in df_peek.iterrows():
+        if 'SessionId' in row.values:
+            try:
+                sid_idx = list(row).index('SessionId')
+            except ValueError:
+                return False
+            data = df_peek.iloc[i + 1:, sid_idx].astype(str)
+            return str(session_id) in data.values
+    return False  # Khong co cot SessionId → bo qua sheet nay
 
 
 def xu_ly_gw(xlsx_path: str, session_id: str, log_callback=None):
     """
-    Doc file GW Excel (tat ca sheet), tra ve (dict_gw_count, df_gw_raw).
+    Doc file GW Excel (chi cac sheet co session can tim), tra ve (dict_gw_count, df_gw_raw).
     dict_gw_count: {KEY_GW: count}  —  KEY_GW = str(BRCD) + str(STTLMAMT_int)
     df_gw_raw: DataFrame day du sau khi loc, de xuat sheet RAW_GW
+    Toi uu: peek 60 dong moi sheet truoc — bo qua sheet khong co session (tranh doc 2M+ dong).
     """
     xl = pd.ExcelFile(xlsx_path, engine='calamine')
 
-    frames = [_doc_mot_sheet(xl, s) for s in xl.sheet_names]
+    # Lazy reading: chi doc sheet co session phu hop
+    matching = [s for s in xl.sheet_names if _sheet_co_session(xl, s, session_id)]
+    if matching:
+        frames = [_doc_mot_sheet(xl, s) for s in matching]
+    else:
+        # Fallback: doc het neu peek khong tim thay (an toan)
+        frames = [_doc_mot_sheet(xl, s) for s in xl.sheet_names]
+
     df = pd.concat(frames, ignore_index=True)
 
     # Loai ban ghi trung theo MSGREF: xay ra khi GW file co sheet phu
@@ -38,11 +58,12 @@ def xu_ly_gw(xlsx_path: str, session_id: str, log_callback=None):
     if 'MSGREF' in df.columns:
         df = df.drop_duplicates(subset=['MSGREF'])
 
-    # Loc session
-    df = df[df['SessionId'].astype(str).str.strip() == str(session_id)].copy()
-
-    # Bo PrcFlg = 'ACH Tu choi'
-    df = df[df['PrcFlg'].astype(str).str.strip() != 'ACH Từ chối'].copy()
+    # Loc session va bo PrcFlg = 'ACH Tu choi' trong 1 buoc (giam 1 lan allocate)
+    mask = (
+        (df['SessionId'].astype(str).str.strip() == str(session_id)) &
+        (df['PrcFlg'].astype(str).str.strip() != 'ACH Từ chối')
+    )
+    df = df[mask].copy()
 
     # Parse STTLMAMT: bo 'VND', dau phay, khoang trang -> int64
     df['STTLMAMT'] = (

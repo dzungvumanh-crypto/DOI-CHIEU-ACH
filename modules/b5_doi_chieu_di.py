@@ -8,21 +8,23 @@ def _doi_chieu(df_npo: pd.DataFrame, key_npo: str,
     Doi chieu theo count (vectorized cumcount).
     Tra ve (df_npo_khop, df_mis_khop, df_npo_thua, df_mis_thua).
     """
-    # Dem count tung KEY moi phia
-    cnt_npo = df_npo.groupby(key_npo, sort=False).size()
-    cnt_mis = df_mis.groupby(key_mis, sort=False).size()
+    # Dem count tung KEY moi phia — groupby tai su dung cho cumcount
+    grp_npo = df_npo.groupby(key_npo, sort=False)
+    grp_mis = df_mis.groupby(key_mis, sort=False)
+    cnt_npo = grp_npo.size()
+    cnt_mis = grp_mis.size()
 
     common = set(cnt_npo.index) & set(cnt_mis.index)
     dict_min = {k: min(int(cnt_npo[k]), int(cnt_mis[k])) for k in common}
 
     # --- NPO side ---
-    cc_npo = df_npo.groupby(key_npo, sort=False).cumcount()
+    cc_npo = grp_npo.cumcount()
     npo_min = df_npo[key_npo].map(dict_min).fillna(0).astype(int)
     df_npo_khop = df_npo[cc_npo < npo_min].copy()
     df_npo_thua = df_npo[cc_npo >= npo_min].copy()
 
     # --- MIS side ---
-    cc_mis = df_mis.groupby(key_mis, sort=False).cumcount()
+    cc_mis = grp_mis.cumcount()
     mis_min = df_mis[key_mis].map(dict_min).fillna(0).astype(int)
     df_mis_khop = df_mis[cc_mis < mis_min].copy()
     df_mis_thua = df_mis[cc_mis >= mis_min].copy()

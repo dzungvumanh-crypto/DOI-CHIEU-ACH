@@ -12,7 +12,20 @@ _COLS = [
     'SESSION', 'LOAI_LENH_OSB', 'NH_GUI', 'NOI_DUNG',
 ]
 
-_NULL_SESSION = {'', 'nan', 'None', 'NaN'}
+_NULL_SESSION = frozenset({'', 'nan', 'None', 'NaN'})
+
+
+def _detect_encoding(z: pyzipper.AESZipFile, name: str) -> str:
+    """Phat hien encoding bang cach peek 512 byte dau — tranh re-read toan bo file."""
+    with z.open(name) as f:
+        raw = f.read(512)
+    if raw[:3] == b'\xef\xbb\xbf':
+        return 'utf-8-sig'
+    try:
+        raw.decode('utf-8')
+        return 'utf-8'
+    except UnicodeDecodeError:
+        return 'cp1252'
 
 
 def _doc_zip(zip_path: str, session_filter: str = None) -> pd.DataFrame:
@@ -26,22 +39,24 @@ def _doc_zip(zip_path: str, session_filter: str = None) -> pd.DataFrame:
         for name in z.namelist():
             if not name.lower().endswith('.csv'):
                 continue
-            for enc in ('utf-8-sig', 'cp1252'):
+            enc = _detect_encoding(z, name)
+            for errors in ('strict', 'replace'):
                 try:
                     with z.open(name) as raw_f:
-                        wrapped = io.TextIOWrapper(raw_f, encoding=enc, errors='strict')
+                        wrapped = io.TextIOWrapper(raw_f, encoding=enc, errors=errors)
                         if session_filter:
                             sid = str(session_filter)
+                            keep_sessions = frozenset({sid} | _NULL_SESSION)
                             chunk_list = []
                             for chunk in pd.read_csv(
                                 wrapped, dtype=str,
                                 usecols=lambda c: c in _COLS,
-                                chunksize=100_000, low_memory=False,
+                                chunksize=200_000, low_memory=False,
                             ):
                                 if 'SESSION' in chunk.columns:
                                     sess = (chunk['SESSION'].fillna('').astype(object).astype(str)
                                             .str.strip().str.lstrip("'"))
-                                    mask = sess.isin({sid} | _NULL_SESSION)
+                                    mask = sess.isin(keep_sessions)
                                     chunk = chunk[mask]
                                 if not chunk.empty:
                                     chunk_list.append(chunk)
@@ -54,9 +69,12 @@ def _doc_zip(zip_path: str, session_filter: str = None) -> pd.DataFrame:
                                 low_memory=False,
                             )
                             frames.append(df)
-                    break  # encoding thanh cong
+                    break
                 except UnicodeDecodeError:
-                    continue
+                    if errors == 'strict':
+                        print(f'[B6][WARN] Encoding detect mismatch trong {name}, thu lai errors=replace')
+                        continue
+                    raise
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=_COLS)
 
 
@@ -78,7 +96,7 @@ def xu_ly_mis_den(zip_paths: List[str], session_id: str, ngay_doi_chieu: datetim
     )
 
     # Chuan hoa SESSION
-    df['SESSION'] = df['SESSION'].fillna('').astype(object).astype(str).str.strip().str.lstrip("'")
+    df['SESSION'] = df['SESSION'].fillna('').astype(str).str.strip().str.lstrip("'")
     df['SESSION_NULL'] = df['SESSION'].isin(['', 'nan', 'None', 'NaN'])
 
     ngay_ts = pd.Timestamp(ngay_doi_chieu.date())
@@ -99,7 +117,7 @@ def xu_ly_mis_den(zip_paths: List[str], session_id: str, ngay_doi_chieu: datetim
     df['SO_TIEN'] = pd.to_numeric(df['SO_TIEN'], errors='coerce').fillna(0).astype('int64')
 
     # TRACE: bo dau nháy don roi bo leading zero
-    df['TRACE'] = df['TRACE'].fillna('').astype(object).astype(str).str.strip().str.lstrip("'").str.lstrip('0')
+    df['TRACE'] = df['TRACE'].fillna('').astype(str).str.strip().str.lstrip("'0")
 
     # KEY_DEN_HUB
     df['KEY_DEN_HUB'] = df['TRACE'] + df['SO_TIEN'].astype(str)

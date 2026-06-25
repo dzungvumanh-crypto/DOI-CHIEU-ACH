@@ -1,4 +1,3 @@
-import re
 import io
 import pyzipper
 import pandas as pd
@@ -6,20 +5,22 @@ from config import ZIP_PASSWORD, COLS_NPO as _COLS_NPO
 
 _COLS_REQUIRED = ['TRBRCD', 'REFERENCE', 'DRAMOUNT', 'CRAMOUNT']
 
-_RE_TRACE = re.compile(r'[A-Za-z]+(\d+)$')
-
-
-def _so_trace(ref: str):
-    """Lay phan so cuoi cua REFERENCE, bo leading zero (nhat quan voi TRACE.lstrip('0') trong B4)."""
-    m = _RE_TRACE.search(str(ref))
-    if not m:
-        return None
-    stripped = m.group(1).lstrip('0')
-    return stripped or '0'
-
 
 _LOCAC_TARGET   = '502003'
 _CUSTOMER_ACH   = '1000-003526275'  # Ma khach hang kenh ACH — loc khi LOCAC 502003 co nhieu CUSTOMER
+
+
+def _detect_encoding(z: pyzipper.AESZipFile, name: str) -> str:
+    """Phat hien encoding bang cach peek 512 byte dau — tranh re-read toan bo file."""
+    with z.open(name) as f:
+        raw = f.read(512)
+    if raw[:3] == b'\xef\xbb\xbf':
+        return 'utf-8-sig'
+    try:
+        raw.decode('utf-8')
+        return 'utf-8'
+    except UnicodeDecodeError:
+        return 'cp1252'
 
 
 def _doc_zip(zip_path: str) -> pd.DataFrame:
@@ -33,16 +34,17 @@ def _doc_zip(zip_path: str) -> pd.DataFrame:
         for name in sorted(z.namelist()):
             if not name.lower().endswith('.csv'):
                 continue
-            for enc in ('utf-8-sig', 'cp1252'):
+            enc = _detect_encoding(z, name)
+            for errors in ('strict', 'replace'):
                 try:
                     with z.open(name) as raw_f:
-                        wrapped = io.TextIOWrapper(raw_f, encoding=enc, errors='strict')
+                        wrapped = io.TextIOWrapper(raw_f, encoding=enc, errors=errors)
                         file_frames = []
                         for i, chunk in enumerate(
                             pd.read_csv(
                                 wrapped, dtype=str,
                                 usecols=lambda c: c.strip() in _COLS_NPO,
-                                chunksize=50_000, low_memory=False,
+                                chunksize=100_000, low_memory=False,
                             )
                         ):
                             chunk.columns = [c.strip() for c in chunk.columns]
@@ -50,19 +52,20 @@ def _doc_zip(zip_path: str) -> pd.DataFrame:
                                 missing = [c for c in _COLS_REQUIRED if c not in chunk.columns]
                                 if missing:
                                     raise ValueError(f'Thieu cot: {missing}')
-                            # Loc LOCAC ngay tai chunk — khong giu dong thua
                             if 'LOCAC' in chunk.columns:
                                 chunk = chunk[chunk['LOCAC'].str.strip() == _LOCAC_TARGET]
-                            # Loc CUSTOMER ACH — tu 20/06/2026 LOCAC 502003 co nhieu CUSTOMER
                             if 'CUSTOMER' in chunk.columns:
                                 chunk = chunk[chunk['CUSTOMER'].str.strip() == _CUSTOMER_ACH]
                             if not chunk.empty:
                                 file_frames.append(chunk)
                         if file_frames:
                             frames.append(pd.concat(file_frames, ignore_index=True))
-                    break  # encoding thanh cong
+                    break
                 except UnicodeDecodeError:
-                    continue
+                    if errors == 'strict':
+                        print(f'[B2][WARN] Encoding detect mismatch trong {name}, thu lai errors=replace')
+                        continue
+                    raise
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=_COLS_NPO)
 
 
@@ -80,8 +83,11 @@ def xu_ly_gl02(zip_path: str, log_callback=None):
     if 'LOCAC' in df.columns:
         df['LOCAC'] = df['LOCAC'].astype(str).str.strip()
 
-    # Tao SO_TRACE
-    df['SO_TRACE'] = df['REFERENCE'].map(_so_trace)
+    # Tao SO_TRACE: vectorized str.extract thay vi Python loop (.map)
+    _extracted = df['REFERENCE'].str.extract(r'[A-Za-z]+(\d+)$', expand=False)
+    _stripped   = _extracted.str.lstrip('0')
+    # Neu lstrip het → so la '0'; neu khong match → None (nhat quan voi logic cu)
+    df['SO_TRACE']   = _stripped.where(_stripped != '', other='0').where(_extracted.notna(), other=None)
     df['_trace_str'] = df['SO_TRACE'].fillna('')
 
     # NPO_DI: LOCAC=502003 AND CRAMOUNT != 0 (giao dich di - credit)
